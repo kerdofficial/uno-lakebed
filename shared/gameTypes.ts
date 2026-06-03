@@ -112,7 +112,7 @@ export type GameSettings = {
   maxPlayers: number;
 };
 
-export type GameStatus = "lobby" | "playing" | "finished";
+export type GameStatus = "lobby" | "playing" | "finished" | "closed";
 
 export type GameInfo = {
   id: string;
@@ -120,6 +120,7 @@ export type GameInfo = {
   hostId: string;
   status: GameStatus;
   winnerId: string;
+  roundsPlayed: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -131,6 +132,7 @@ export type PlayerRecord = {
   displayName: string;
   picture: string;
   seatIndex: string;
+  wins: string;
   isReady: boolean;
   createdAt: string;
   updatedAt: string;
