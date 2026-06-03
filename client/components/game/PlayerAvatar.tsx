@@ -1,22 +1,29 @@
 import type { PlayerInfo } from "../../../shared/gameTypes";
 
+const SEAT_COLORS = ["bg-red-700", "bg-blue-700", "bg-green-700", "bg-amber-700"];
+
 type PlayerAvatarProps = {
   player: PlayerInfo;
   isCurrentTurn: boolean;
   small?: boolean;
+  seatIndex?: number;
 };
 
 export function PlayerAvatar({
   player,
   isCurrentTurn,
   small = false,
+  seatIndex = 0,
 }: PlayerAvatarProps) {
-  const size = small ? "w-8 h-8" : "w-10 h-10";
-  const ring = isCurrentTurn ? "ring-2 ring-yellow-400" : "";
+  const size = small ? "w-8 h-8" : "w-12 h-12";
+  const fallbackBg = SEAT_COLORS[seatIndex % SEAT_COLORS.length];
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className={`${size} rounded-full ${ring} overflow-hidden bg-neutral-700 flex items-center justify-center`}>
+    <div className="flex flex-col items-center gap-0.5 relative">
+      <div
+        className={`${size} rounded-full overflow-hidden flex items-center justify-center ${!player.picture ? fallbackBg : "bg-neutral-700"} ${isCurrentTurn ? "ring-[3px] ring-amber-400" : ""}`}
+        style={isCurrentTurn ? { animation: "turn-pulse 2s ease-in-out infinite" } : {}}
+      >
         {player.picture ? (
           <img
             src={player.picture}
@@ -31,16 +38,18 @@ export function PlayerAvatar({
         )}
       </div>
       <div className="text-center">
-        <div className={`${small ? "text-[10px]" : "text-xs"} text-neutral-300 truncate max-w-[60px]`}>
+        <div className={`${small ? "text-[10px]" : "text-xs"} text-neutral-300 font-medium`}>
           {player.displayName}
         </div>
-        <div className={`${small ? "text-[9px]" : "text-[10px]"} text-neutral-500`}>
-          {player.cardCount} cards
-        </div>
-        {player.calledUno && player.cardCount === 1 && (
-          <div className="text-[9px] text-red-400 font-bold">UNO!</div>
-        )}
       </div>
+      {player.calledUno && player.cardCount === 1 && (
+        <div
+          className="absolute -bottom-0.5 -right-0.5 bg-red-600 text-white text-[7px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md"
+          style={{ animation: "bounce-in 0.4s ease-out" }}
+        >
+          !
+        </div>
+      )}
     </div>
   );
 }

@@ -7,6 +7,13 @@ type LobbyViewProps = {
   players: PlayerRecord[];
 };
 
+const SEAT_COLORS = [
+  "bg-red-600/20 text-red-400 border-red-500/20",
+  "bg-blue-600/20 text-blue-400 border-blue-500/20",
+  "bg-green-600/20 text-green-400 border-green-500/20",
+  "bg-amber-600/20 text-amber-400 border-amber-500/20",
+];
+
 export function LobbyView({ game, players }: LobbyViewProps) {
   const auth = useAuth();
   const toggleReady = useMutation<[gameId: string], void>("toggleReady");
@@ -35,6 +42,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
 
   const [displayName, setDisplayName] = useState(myPlayer?.displayName || "");
   const [nameError, setNameError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setDisplayName(myPlayer?.displayName || "");
@@ -52,6 +60,8 @@ export function LobbyView({ game, players }: LobbyViewProps) {
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(game.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   const handleCloseRoom = async () => {
@@ -65,62 +75,141 @@ export function LobbyView({ game, players }: LobbyViewProps) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
-      <h2 className="text-2xl font-bold text-white">Game Lobby</h2>
-
-      {game.status === "finished" && (
-        <div className="text-center">
-          <div className="text-neutral-500 text-xs uppercase tracking-widest">
-            Last winner
-          </div>
-          <div className="text-white font-bold mt-1">
-            {winner?.displayName || "Unknown"}
-          </div>
+    <div className="flex flex-col items-center min-h-[90vh] py-8 px-6 gap-5">
+      {game.status === "finished" && winner && (
+        <div
+          className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-6 py-3 text-center"
+          style={{ animation: "fade-slide-in 0.3s ease-out" }}
+        >
+          <span className="text-amber-400 text-sm font-medium">
+            {winner.displayName} won the last round!
+          </span>
         </div>
       )}
 
-      <div className="text-center">
-        <div className="text-neutral-400 text-sm mb-2">Room Code</div>
+      <div
+        className="bg-neutral-900/60 border border-neutral-800 rounded-2xl px-8 py-6 text-center"
+        style={{ animation: "fade-slide-in 0.3s ease-out" }}
+      >
+        <div className="text-neutral-500 text-xs uppercase tracking-wider font-medium mb-2">
+          Room Code
+        </div>
         <button
           onClick={handleCopyCode}
-          className="text-4xl md:text-5xl font-mono font-black tracking-[0.3em] text-white hover:text-neutral-300 transition-colors"
+          className="text-4xl md:text-5xl font-mono font-black tracking-[0.3em] text-white hover:text-neutral-200 transition-colors relative active:scale-[0.98]"
         >
           {game.code}
         </button>
-        <div className="text-neutral-500 text-xs mt-1">tap to copy</div>
+        <div className="mt-2 h-5">
+          {copied ? (
+            <span
+              className="text-green-400 text-xs font-medium"
+              style={{ animation: "fade-slide-in 0.2s ease-out" }}
+            >
+              Copied to clipboard!
+            </span>
+          ) : (
+            <span className="text-neutral-600 text-xs">tap to copy</span>
+          )}
+        </div>
       </div>
 
-      <div className="w-full max-w-sm">
-        <div className="mb-5">
-          <div className="text-neutral-400 text-sm mb-3 text-center">
-            Leaderboard
+      <div className="w-full max-w-sm space-y-4">
+        <div
+          className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
+          style={{ animation: "fade-slide-in 0.3s ease-out 0.1s both" }}
+        >
+          <div className="text-neutral-500 text-xs mb-3 text-center font-medium uppercase tracking-wider">
+            Players ({players.length}/4)
           </div>
           <div className="space-y-2">
-            {leaderboard.map((player, index) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2.5"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-neutral-500 text-xs font-mono w-5">
-                    {index + 1}
-                  </span>
-                  <span className="text-white text-sm truncate">
-                    {player.displayName}
-                  </span>
+            {players.map((player, index) => {
+              const isMe = player.userId === auth.userId;
+              const colorClass = SEAT_COLORS[index % SEAT_COLORS.length];
+              const isReady = player.isReady || player.userId === game.hostId;
+
+              return (
+                <div
+                  key={player.id}
+                  className={`flex items-center justify-between rounded-xl px-4 py-3 border transition-all ${
+                    isMe
+                      ? "bg-neutral-800/80 border-neutral-600"
+                      : "bg-neutral-800/40 border-neutral-800"
+                  }`}
+                  style={{ animation: `fade-slide-in 0.3s ease-out ${index * 60}ms both` }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center border ${colorClass}`}>
+                      {player.picture ? (
+                        <img
+                          src={player.picture}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="font-bold text-sm">
+                          {player.displayName.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-white text-sm font-medium flex items-center gap-1.5">
+                        {player.displayName}
+                        {player.userId === game.hostId && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-bold">
+                            HOST
+                          </span>
+                        )}
+                        {isMe && (
+                          <span className="text-neutral-500 text-[10px]">(you)</span>
+                        )}
+                      </div>
+                      {Number(player.wins || 0) > 0 && (
+                        <div className="text-yellow-400/70 text-[10px]">
+                          {Number(player.wins || 0)} win{Number(player.wins || 0) !== 1 ? "s" : ""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isReady ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold">
+                        Ready
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-700 text-neutral-400">
+                        Waiting
+                      </span>
+                    )}
+                    {isHost && player.userId !== auth.userId && (
+                      <button
+                        onClick={() => kickPlayer(game.id, player.userId)}
+                        className="text-[10px] text-neutral-600 hover:text-red-400 transition-colors px-1"
+                      >
+                        Kick
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <span className="text-yellow-400 text-sm font-bold">
-                  {Number(player.wins || 0)}
-                </span>
+              );
+            })}
+
+            {players.length < 4 && (
+              <div className="flex items-center justify-center py-3 border border-dashed border-neutral-700 rounded-xl text-neutral-600 text-xs">
+                {4 - players.length} spot{4 - players.length !== 1 ? "s" : ""} available
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         {myPlayer && (
-          <div className="mb-5">
-            <div className="text-neutral-400 text-sm mb-2 text-center">
-              Your username
+          <div
+            className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
+            style={{ animation: "fade-slide-in 0.3s ease-out 0.2s both" }}
+          >
+            <div className="text-neutral-500 text-xs mb-2 text-center font-medium uppercase tracking-wider">
+              Your display name
             </div>
             <div className="flex gap-2">
               <input
@@ -128,112 +217,92 @@ export function LobbyView({ game, players }: LobbyViewProps) {
                 value={displayName}
                 maxLength={24}
                 onInput={(event) => setDisplayName((event.target as HTMLInputElement).value)}
-                className="min-w-0 flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-white"
+                className="min-w-0 flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-neutral-400 transition-colors"
               />
               <button
                 onClick={handleSaveDisplayName}
                 disabled={displayName.trim() === myPlayer.displayName}
-                className="px-4 py-2 bg-neutral-800 text-white rounded-lg text-sm font-medium hover:bg-neutral-700 transition-colors disabled:opacity-40"
+                className="px-4 py-2.5 bg-neutral-700 text-white rounded-xl text-sm font-medium hover:bg-neutral-600 transition-all disabled:opacity-30 active:scale-[0.98]"
               >
                 Save
               </button>
             </div>
             {nameError && (
-              <div className="text-red-400 text-xs text-center mt-2">
-                {nameError}
-              </div>
+              <div className="text-red-400 text-xs text-center mt-2">{nameError}</div>
             )}
           </div>
         )}
 
-        <div className="text-neutral-400 text-sm mb-3 text-center">
-          Players ({players.length}/4)
-        </div>
-        <div className="space-y-2">
-          {players.map((player) => (
-            <div
-              key={player.id}
-              className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-neutral-700 flex items-center justify-center">
-                  {player.picture ? (
-                    <img
-                      src={player.picture}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span className="text-white font-bold text-sm">
-                      {player.displayName.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <span className="text-white text-sm">
-                  {player.displayName}
-                  {player.userId === game.hostId && (
-                    <span className="text-yellow-400 text-xs ml-1">HOST</span>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div
-                  className={`text-xs font-bold ${
-                    player.isReady || player.userId === game.hostId
-                      ? "text-green-400"
-                      : "text-neutral-500"
-                  }`}
-                >
-                  {player.userId === game.hostId || player.isReady ? "Ready" : "Waiting..."}
-                </div>
-                {isHost && player.userId !== auth.userId && (
-                  <button
-                    onClick={() => kickPlayer(game.id, player.userId)}
-                    className="text-xs text-neutral-500 hover:text-red-400 transition-colors"
-                  >
-                    Kick
-                  </button>
-                )}
-              </div>
+        {leaderboard.some((p) => Number(p.wins || 0) > 0) && (
+          <div
+            className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
+            style={{ animation: "fade-slide-in 0.3s ease-out 0.3s both" }}
+          >
+            <div className="text-neutral-500 text-xs mb-3 text-center font-medium uppercase tracking-wider">
+              Leaderboard
             </div>
-          ))}
-        </div>
+            <div className="space-y-1.5">
+              {leaderboard.filter((p) => Number(p.wins || 0) > 0).map((player, index) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`text-sm font-bold w-5 text-center ${
+                      index === 0 ? "text-yellow-400" : index === 1 ? "text-neutral-400" : "text-neutral-600"
+                    }`}>
+                      {index === 0 ? "\u{1F451}" : index + 1}
+                    </span>
+                    <span className="text-white text-sm truncate">
+                      {player.displayName}
+                    </span>
+                  </div>
+                  <span className="text-yellow-400 text-sm font-bold tabular-nums">
+                    {Number(player.wins || 0)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex gap-3">
+      <div
+        className="flex flex-wrap justify-center gap-3 mt-2"
+        style={{ animation: "fade-slide-in 0.3s ease-out 0.4s both" }}
+      >
         {!isHost && myPlayer && (
           <button
             onClick={() => toggleReady(game.id)}
-            className={`px-6 py-2.5 rounded-full font-bold text-sm transition-colors ${
+            className={`px-7 py-3 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
               myPlayer.isReady
-                ? "bg-neutral-700 text-neutral-300 hover:bg-neutral-600"
-                : "bg-green-600 text-white hover:bg-green-500"
+                ? "bg-neutral-800 text-neutral-300 border border-neutral-700 hover:bg-neutral-700"
+                : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-600/20"
             }`}
           >
-            {myPlayer.isReady ? "Not ready" : "Ready!"}
+            {myPlayer.isReady ? "Not ready" : "I'm Ready!"}
           </button>
         )}
         {isHost && (
           <button
             onClick={() => startGame(game.id)}
             disabled={!canStart}
-            className="px-6 py-2.5 bg-white text-black rounded-full font-bold text-sm hover:bg-neutral-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-7 py-3 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-red-600/20 active:scale-[0.98]"
           >
-            {game.status === "finished" ? "Start next game" : "Start Game"}
+            {game.status === "finished" ? "Next Round" : "Start Game"}
           </button>
         )}
         {isHost && game.status === "finished" && (
           <button
             onClick={handleCloseRoom}
-            className="px-4 py-2.5 text-neutral-400 text-sm hover:text-red-400 transition-colors"
+            className="px-5 py-3 text-neutral-500 text-sm hover:text-red-400 transition-colors"
           >
             Close room
           </button>
         )}
         <button
           onClick={handleLeave}
-          className="px-4 py-2.5 text-neutral-400 text-sm hover:text-red-400 transition-colors"
+          className="px-5 py-3 text-neutral-500 text-sm hover:text-red-400 transition-colors"
         >
           Leave
         </button>

@@ -33,7 +33,7 @@ export function computePlayerView(
   const mustDraw =
     (canStack && stackableCardIds.length === 0) ||
     (canPlay && playableCardIds.length === 0);
-  const unoCallable = isMyTurn && myHand.length === 2 && state.phase === "play";
+  const unoCallable = myHand.length === 1 && !state.unoCallStatus[userId] && state.phase !== "finished";
   const unoCatchable = state.turnOrder.filter((playerId) => {
     if (playerId === userId) return false;
     const hand = state.hands[playerId] || [];

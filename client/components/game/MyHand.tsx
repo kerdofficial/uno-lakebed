@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Card, PlayerView } from "../../../shared/gameTypes";
 import { UnoCard } from "../cards/UnoCard";
 
@@ -6,6 +7,7 @@ type MyHandProps = {
   selectedCards: Set<string>;
   onToggleCard: (id: string) => void;
   onPlaySelected: () => void;
+  onClearSelection: () => void;
 };
 
 function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card) {
@@ -34,27 +36,82 @@ export function MyHand({
   selectedCards,
   onToggleCard,
   onPlaySelected,
+  onClearSelection,
 }: MyHandProps) {
-  const overlapPx = Math.max(20, 46 - view.myHand.length * 2);
+  const overlapPx = Math.max(16, 42 - view.myHand.length * 2);
+  const hasDealt = useRef(false);
+  const prevCardIds = useRef<Set<string>>(new Set());
+  const [newCardIds, setNewCardIds] = useState<Set<string>>(new Set());
+
+  const isFirstDeal = !hasDealt.current && view.myHand.length > 0;
+
+  useEffect(() => {
+    if (view.myHand.length > 0 && !hasDealt.current) {
+      hasDealt.current = true;
+    }
+  }, [view.myHand.length]);
+
+  useEffect(() => {
+    if (!hasDealt.current) {
+      prevCardIds.current = new Set(view.myHand.map((c) => c.id));
+      return;
+    }
+
+    const currentIds = new Set(view.myHand.map((c) => c.id));
+    const entering = new Set<string>();
+    for (const id of currentIds) {
+      if (!prevCardIds.current.has(id)) {
+        entering.add(id);
+      }
+    }
+
+    prevCardIds.current = currentIds;
+
+    if (entering.size > 0) {
+      setNewCardIds(entering);
+      const timeout = setTimeout(() => setNewCardIds(new Set()), 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [view.myHand]);
+
+  const length = view.myHand.length;
 
   return (
-    <div className="flex flex-col items-center gap-2 pb-4 relative">
+    <div className="flex flex-col items-center gap-2 pb-4">
       {selectedCards.size > 0 && (
-        <button
-          onClick={onPlaySelected}
-          className="px-4 py-1.5 bg-white text-black text-sm font-bold rounded-full hover:bg-neutral-200 transition-colors absolute -top-8"
-        >
-          Play {selectedCards.size} card{selectedCards.size > 1 ? "s" : ""}
-        </button>
+        <div className="flex items-center gap-2 mb-2" style={{ animation: "bounce-in 0.3s ease-out" }}>
+          <button
+            onClick={onPlaySelected}
+            className="bg-red-600 text-white font-bold text-sm px-5 py-2 rounded-full shadow-lg hover:bg-red-700 transition-colors"
+          >
+            Play {selectedCards.size} card{selectedCards.size > 1 ? "s" : ""}
+          </button>
+          <button
+            onClick={onClearSelection}
+            className="bg-neutral-700 text-white rounded-full w-7 h-7 text-xs flex items-center justify-center hover:bg-neutral-600 transition-colors"
+          >
+            X
+          </button>
+        </div>
       )}
       <div
-        className="flex justify-center items-end overflow-x-auto max-w-full px-2 py-4"
+        className="flex justify-center items-end overflow-x-visible max-w-full px-2 py-4"
         style={{ scrollSnapType: "x mandatory" }}
       >
         {view.myHand.map((card, index) => {
           const isPlayable = canToggleCard(view, selectedCards, card);
           const isSelected = selectedCards.has(card.id);
           const marginLeft = index === 0 ? 0 : -overlapPx;
+
+          const angle = (index - (length - 1) / 2) * 2.5;
+          const offsetY = Math.abs(index - (length - 1) / 2) * 3;
+
+          let animationStyle: string | undefined;
+          if (isFirstDeal) {
+            animationStyle = `card-deal 0.4s ease-out ${index * 80}ms both`;
+          } else if (newCardIds.has(card.id)) {
+            animationStyle = "card-enter-hand 0.3s ease-out";
+          }
 
           return (
             <div
@@ -63,14 +120,23 @@ export function MyHand({
                 marginLeft: `${marginLeft}px`,
                 zIndex: isSelected ? 50 : index,
                 scrollSnapAlign: "center",
+                animation: animationStyle,
               }}
             >
-              <UnoCard
-                card={card}
-                playable={isPlayable}
-                selected={isSelected}
-                onClick={() => isPlayable && onToggleCard(card.id)}
-              />
+              <div
+                style={{
+                  transform: `rotate(${angle}deg) translateY(${offsetY}px)`,
+                  transformOrigin: "bottom center",
+                  transition: "transform 0.4s ease-out",
+                }}
+              >
+                <UnoCard
+                  card={card}
+                  playable={isPlayable}
+                  selected={isSelected}
+                  onClick={() => isPlayable && onToggleCard(card.id)}
+                />
+              </div>
             </div>
           );
         })}
