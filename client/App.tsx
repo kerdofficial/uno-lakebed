@@ -1,11 +1,17 @@
 import { Route, Router, Routes, signOut, useAuth } from "lakebed/client";
+import { useEffect } from "preact/hooks";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { HomePage } from "./pages/HomePage";
 import { GameRouteWrapper } from "./routes/GameRouteWrapper";
 import { AnimationStyles } from "./utils/AnimationStyles";
+import { applyFavicon } from "./utils/favicon";
 
 export function App() {
   const auth = useAuth();
+
+  useEffect(() => {
+    applyFavicon();
+  }, []);
 
   return (
     <div className="min-h-[85vh] h-[85vh] md:min-h-screen md:h-screen bg-neutral-950 text-white">
@@ -14,7 +20,7 @@ export function App() {
         <div className="absolute top-4 right-4 z-10">
           <button
             onClick={() => signOut()}
-            className="text-xs text-neutral-500 hover:text-white transition-colors"
+            className="text-xs text-neutral-500 hover:text-white transition-colors cursor-pointer"
           >
             Sign out
           </button>

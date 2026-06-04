@@ -33,7 +33,10 @@ export function useGameAnimations(view: PlayerView | null): GameAnimations {
       const prevPlayer = prev.turnOrder.find((p) => p.userId === player.userId);
       if (!prevPlayer) continue;
 
-      if (player.calledUno && !prevPlayer.calledUno && player.cardCount === 1) {
+      const justCalledUno = player.calledUno && !prevPlayer.calledUno;
+      const justReachedUnoHand = player.calledUno && player.cardCount === 1 && prevPlayer.cardCount !== 1;
+
+      if (justCalledUno || justReachedUnoHand) {
         setUnoCalledBy(player.userId);
         const t = setTimeout(() => setUnoCalledBy(null), 1500);
         return () => clearTimeout(t);

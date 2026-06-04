@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useAuth, Link } from "lakebed/client";
-import { useCallback, useState } from "preact/hooks";
+import { useMutation, useQuery, useAuth } from "lakebed/client";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerView } from "../../shared/gameTypes";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { ColorPicker } from "../components/game/ColorPicker";
 import { Confetti } from "../components/game/Confetti";
+import { DrawDecisionModal } from "../components/game/DrawDecisionModal";
 import { GameControls } from "../components/game/GameControls";
 import { HelperText } from "../components/game/HelperText";
 import { MyHand } from "../components/game/MyHand";
@@ -18,7 +19,13 @@ type PlayerViewRecord = {
   view: string;
 };
 
-export function GameView({ gameId }: { gameId: string }) {
+export function GameView({
+  gameId,
+  onBackToLobby,
+}: {
+  gameId: string;
+  onBackToLobby?: () => void;
+}) {
   const auth = useAuth();
   const allViews = useQuery<PlayerViewRecord[]>("myGameView");
   const gameAction = useMutation<[gameId: string, actionJson: string], void>(
@@ -27,9 +34,12 @@ export function GameView({ gameId }: { gameId: string }) {
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
+    kind: "playSelected" | "playDrawnCard";
     cardIds: string[];
   } | null>(null);
   const [triggerCard, setTriggerCard] = useState<Card | null>(null);
+  const [unoArmed, setUnoArmed] = useState(false);
+  const [drawDecisionUnoArmed, setDrawDecisionUnoArmed] = useState(false);
 
   const viewRecord = allViews.find((entry) => entry.gameId === gameId);
   const view: PlayerView | null = viewRecord
@@ -41,6 +51,22 @@ export function GameView({ gameId }: { gameId: string }) {
   const isMyTurn =
     !!view && view.turnOrder[view.currentPlayerIndex]?.userId === auth.userId;
   const mustChooseColor = !!view && view.phase === "chooseColor" && isMyTurn;
+  const selectedCount = selectedCards.size;
+  const willHaveOneCardAfterSelectedPlay = !!view && view.myHand.length - selectedCount === 1;
+  const pendingDrawDecisionCard = view?.pendingDrawDecisionCard || null;
+  const canCallUnoForDrawDecision = !!view && view.myHand.length - 1 === 1;
+
+  useEffect(() => {
+    if (!willHaveOneCardAfterSelectedPlay && unoArmed) {
+      setUnoArmed(false);
+    }
+  }, [unoArmed, willHaveOneCardAfterSelectedPlay]);
+
+  useEffect(() => {
+    if (!pendingDrawDecisionCard) {
+      setDrawDecisionUnoArmed(false);
+    }
+  }, [pendingDrawDecisionCard]);
 
   const handleToggleCard = useCallback((cardId: string) => {
     setSelectedCards((previous) => {
@@ -58,8 +84,47 @@ export function GameView({ gameId }: { gameId: string }) {
     setPendingAction(null);
     setTriggerCard(null);
     setSelectedCards(new Set());
+    setUnoArmed(false);
     setShowColorPicker(false);
   };
+
+  const submitSelectedPlay = useCallback(
+    async (cardIds: string[], chosenColor?: CardColor) => {
+      if (!view) return;
+
+      const actionType = view.canStack ? "stackCards" : "playCards";
+      await gameAction(
+        gameId,
+        JSON.stringify({
+          type: actionType,
+          cardIds,
+          chosenColor,
+          callUno: unoArmed && view.myHand.length - cardIds.length === 1,
+        }),
+      );
+      clearSelections();
+    },
+    [gameAction, gameId, unoArmed, view],
+  );
+
+  const submitDrawDecision = useCallback(
+    async (decision: "keep" | "play", chosenColor?: CardColor) => {
+      await gameAction(
+        gameId,
+        JSON.stringify({
+          type: "resolveDrawDecision",
+          decision,
+          chosenColor,
+          callUno: decision === "play" && drawDecisionUnoArmed,
+        }),
+      );
+      setPendingAction(null);
+      setTriggerCard(null);
+      setDrawDecisionUnoArmed(false);
+      setShowColorPicker(false);
+    },
+    [drawDecisionUnoArmed, gameAction, gameId],
+  );
 
   const handlePlaySelected = useCallback(async () => {
     if (!view || selectedCards.size === 0) return;
@@ -73,7 +138,10 @@ export function GameView({ gameId }: { gameId: string }) {
     );
 
     if (needsColor) {
-      setPendingAction({ cardIds });
+      setPendingAction({
+        kind: "playSelected",
+        cardIds,
+      });
       setTriggerCard(
         cards.find((c) => c.type === "wild" || c.type === "wild4") || null,
       );
@@ -81,10 +149,8 @@ export function GameView({ gameId }: { gameId: string }) {
       return;
     }
 
-    const actionType = view.canStack ? "stackCards" : "playCards";
-    await gameAction(gameId, JSON.stringify({ type: actionType, cardIds }));
-    clearSelections();
-  }, [gameAction, gameId, selectedCards, view]);
+    await submitSelectedPlay(cardIds);
+  }, [selectedCards, submitSelectedPlay, view]);
 
   const handleColorChosen = useCallback(
     async (color: CardColor) => {
@@ -99,23 +165,20 @@ export function GameView({ gameId }: { gameId: string }) {
         return;
       }
 
-      const actionType = view?.canStack ? "stackCards" : "playCards";
-      await gameAction(
-        gameId,
-        JSON.stringify({
-          type: actionType,
-          cardIds: pendingAction.cardIds,
-          chosenColor: color,
-        }),
-      );
-      clearSelections();
+      if (pendingAction.kind === "playDrawnCard") {
+        await submitDrawDecision("play", color);
+        return;
+      }
+
+      await submitSelectedPlay(pendingAction.cardIds, color);
     },
-    [gameAction, gameId, pendingAction, view],
+    [gameAction, gameId, pendingAction, submitDrawDecision, submitSelectedPlay],
   );
 
   const handleDraw = useCallback(async () => {
     await gameAction(gameId, JSON.stringify({ type: "drawCards" }));
     setSelectedCards(new Set());
+    setUnoArmed(false);
   }, [gameAction, gameId]);
 
   const handleUno = useCallback(async () => {
@@ -134,7 +197,32 @@ export function GameView({ gameId }: { gameId: string }) {
 
   const handleClearSelection = useCallback(() => {
     setSelectedCards(new Set());
+    setUnoArmed(false);
   }, []);
+
+  const handleKeepDrawnCard = useCallback(async () => {
+    await submitDrawDecision("keep");
+  }, [submitDrawDecision]);
+
+  const handlePlayDrawnCard = useCallback(async () => {
+    if (!pendingDrawDecisionCard) return;
+
+    const needsColor =
+      pendingDrawDecisionCard.type === "wild" ||
+      pendingDrawDecisionCard.type === "wild4";
+
+    if (needsColor) {
+      setPendingAction({
+        kind: "playDrawnCard",
+        cardIds: [pendingDrawDecisionCard.id],
+      });
+      setTriggerCard(pendingDrawDecisionCard);
+      setShowColorPicker(true);
+      return;
+    }
+
+    await submitDrawDecision("play");
+  }, [pendingDrawDecisionCard, submitDrawDecision]);
 
   if (!view) {
     return (
@@ -173,13 +261,13 @@ export function GameView({ gameId }: { gameId: string }) {
             Better luck next time!
           </p>
         )}
-        <Link
-          to="/"
+        <button
+          onClick={onBackToLobby}
           className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-colors"
           style={{ animation: "fade-slide-in 0.4s ease-out 0.6s both" }}
         >
-          Back to home
-        </Link>
+          Back to lobby
+        </button>
       </div>
     );
   }
@@ -206,6 +294,18 @@ export function GameView({ gameId }: { gameId: string }) {
           triggerCard={colorPickerTrigger}
         />
       )}
+      {pendingDrawDecisionCard && !showColorPicker && (
+        <DrawDecisionModal
+          card={pendingDrawDecisionCard}
+          canCallUno={canCallUnoForDrawDecision}
+          unoArmed={drawDecisionUnoArmed}
+          onToggleUnoArmed={() =>
+            setDrawDecisionUnoArmed((current) => !current)
+          }
+          onKeep={handleKeepDrawnCard}
+          onPlay={handlePlayDrawnCard}
+        />
+      )}
 
       {animations.unoCalledBy && <UnoSplash />}
 
@@ -218,7 +318,7 @@ export function GameView({ gameId }: { gameId: string }) {
       </div>
 
       <div className="flex-1 flex items-center justify-center relative h-full">
-        <PlayArea view={view} onDraw={handleDraw} isMyTurn={isMyTurn} />
+        <PlayArea view={view} onDraw={handleDraw} isMyTurn={isMyTurn} onPlaySelected={handlePlaySelected} />
       </div>
 
       <div className="flex-shrink-0">
@@ -236,9 +336,12 @@ export function GameView({ gameId }: { gameId: string }) {
         <MyHand
           view={view}
           selectedCards={selectedCards}
+          unoArmed={unoArmed}
           onToggleCard={handleToggleCard}
+          onToggleUnoArmed={() => setUnoArmed((current) => !current)}
           onPlaySelected={handlePlaySelected}
           onClearSelection={handleClearSelection}
+          colorPickerVisible={showColorPicker || mustChooseColor || pendingDrawDecisionCard}
         />
       </div>
     </div>

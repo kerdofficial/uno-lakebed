@@ -21,7 +21,7 @@ export function PlayerAvatar({
   return (
     <div className="flex flex-col items-center gap-0.5 relative">
       <div
-        className={`${size} rounded-full overflow-hidden flex items-center justify-center ${!player.picture ? fallbackBg : "bg-neutral-700"} ${isCurrentTurn ? "ring-[3px] ring-amber-400" : ""}`}
+        className={`${size} rounded-full overflow-hidden flex items-center justify-center ${!player.picture ? fallbackBg : "bg-neutral-700"} ${isCurrentTurn ? "border-[3px] border-amber-400" : ""}`}
         style={isCurrentTurn ? { animation: "turn-pulse 2s ease-in-out infinite" } : {}}
       >
         {player.picture ? (
@@ -44,8 +44,8 @@ export function PlayerAvatar({
       </div>
       {player.calledUno && player.cardCount === 1 && (
         <div
-          className="absolute -bottom-0.5 -right-0.5 bg-red-600 text-white text-[7px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-md"
-          style={{ animation: "bounce-in 0.4s ease-out" }}
+          className="absolute top-3 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs font-black rounded-full w-6 h-6 flex items-center justify-center"
+          style={{ animation: "uno-called-pulse 1.5s ease-in-out infinite" }}
         >
           !
         </div>

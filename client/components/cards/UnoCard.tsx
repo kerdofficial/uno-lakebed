@@ -20,6 +20,7 @@ type UnoCardProps = {
   onClick?: () => void;
   animationStyle?: Record<string, string>;
   hoverable?: boolean;
+  colorPickerVisible?: boolean;
 };
 
 export function UnoCard({
@@ -31,6 +32,7 @@ export function UnoCard({
   size = "normal",
   onClick,
   animationStyle,
+  colorPickerVisible = false,
 }: UnoCardProps) {
   const sizeConfig = CARD_SIZES[size];
 
@@ -95,7 +97,11 @@ export function UnoCard({
       ? "hover:-translate-y-3"
       : "";
 
-  const dimClass = !playable && !selected ? "brightness-[0.35] saturate-50" : "";
+  const dimClass = colorPickerVisible 
+    ? "brightness-[0.65]" 
+    : !playable && !selected 
+      ? "brightness-[0.35] saturate-50" 
+      : "";
 
   const bgStyle: Record<string, string> = isWild
     ? { background: WILD_GRADIENT }
@@ -110,9 +116,9 @@ export function UnoCard({
       {isWild ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className="flex items-center justify-center bg-white rounded-full shadow-md"
+            className="flex items-center justify-center bg-white rounded-full shadow-md aspect-square!"
             style={{
-              width: size === "small" ? "18px" : "40%",
+              width: size === "small" ? "18px" : undefined,
               height: size === "small" ? "18px" : "40%",
             }}
           >
@@ -126,7 +132,7 @@ export function UnoCard({
           <div
             className="absolute bg-white/90"
             style={{
-              inset: size === "small" ? "3px" : "5px",
+              inset: size === "small" ? "3px" : "10px",
               borderRadius: "50%/40%",
               transform: "rotate(20deg)",
             }}

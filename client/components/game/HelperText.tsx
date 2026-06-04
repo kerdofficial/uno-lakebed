@@ -9,7 +9,9 @@ type HelperTextProps = {
 export function HelperText({ view, isMyTurn, hasSelectedCards }: HelperTextProps) {
   let text = "";
 
-  if (view.unoCallable) {
+  if (view.pendingDrawDecisionCard) {
+    text = "Play the drawn card, or keep it in your hand";
+  } else if (view.unoCallable) {
     text = "You have 1 card - call UNO!";
   } else if (view.unoCatchable.length > 0) {
     const player = view.turnOrder.find((p) => p.userId === view.unoCatchable[0]);

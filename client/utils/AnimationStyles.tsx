@@ -41,8 +41,12 @@ export function AnimationStyles() {
         50% { box-shadow: 0 0 18px 4px var(--glow-color, rgba(255,255,255,0.3)); }
       }
       @keyframes turn-pulse {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5); }
+        0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.1); }
         50% { box-shadow: 0 0 0 10px rgba(251, 191, 36, 0); }
+      }
+      @keyframes uno-called-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 1); }
+        50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
       }
       @keyframes uno-splash {
         0% { transform: scale(0) rotate(-15deg); opacity: 0; }
@@ -65,7 +69,7 @@ export function AnimationStyles() {
       }
       @keyframes stack-pulse {
         0% { transform: scale(1); }
-        50% { transform: scale(1.2); text-shadow: 0 0 16px rgba(239, 68, 68, 0.8); }
+        50% { transform: scale(1.05); text-shadow: 0 0 16px rgba(239, 68, 68, 0.8); }
         100% { transform: scale(1); }
       }
       @keyframes confetti-fall {

@@ -1,5 +1,5 @@
 import type { GameAction, GameState, PlayerInfo, PlayerView } from "../gameTypes";
-import { actionWithDisplayNames } from "./descriptions";
+import { actionWithDisplayNames, buildActionParts } from "./descriptions";
 import { determineLastDrawType } from "./state";
 import { getPlayableCards, getStackableCards } from "./rules";
 
@@ -20,12 +20,20 @@ export function computePlayerView(
   }
 
   const isMyTurn = state.turnOrder[state.currentPlayerIndex] === userId;
-  const canPlay = isMyTurn && state.phase === "play";
+  const pendingDrawDecisionCard =
+    state.pendingDrawDecision?.playerId === userId
+      ? myHand.find((card) => card.id === state.pendingDrawDecision?.cardId) || null
+      : null;
+  const hasPendingDrawDecision = !!pendingDrawDecisionCard;
+  const canPlay = isMyTurn && state.phase === "play" && !hasPendingDrawDecision;
   const playableCardIds = canPlay
     ? getPlayableCards(myHand, discardTop, state.currentColor).map((card) => card.id)
     : [];
 
-  const canStack = state.phase === "stacking" && state.pendingDrawTarget === userId;
+  const canStack =
+    state.phase === "stacking" &&
+    state.pendingDrawTarget === userId &&
+    !hasPendingDrawDecision;
   const stackableCardIds = canStack
     ? getStackableCards(myHand, determineLastDrawType(state.discardPile)).map((card) => card.id)
     : [];
@@ -51,6 +59,8 @@ export function computePlayerView(
     };
   });
 
+  const lastAction = actionWithDisplayNames(state.lastAction, players);
+
   return {
     gameId,
     myHand,
@@ -61,7 +71,8 @@ export function computePlayerView(
     direction: state.direction,
     turnOrder,
     phase: state.phase,
-    lastAction: actionWithDisplayNames(state.lastAction, players),
+    lastAction,
+    lastActionParts: buildActionParts(state.lastAction, players),
     canPlay,
     playableCardIds,
     canStack,
@@ -71,6 +82,7 @@ export function computePlayerView(
     unoCallable,
     unoCatchable,
     drawPileCount: state.drawPile.length,
+    pendingDrawDecisionCard,
     winner: state.winner,
     finishedPlayers: state.finishedPlayers,
   };
@@ -82,6 +94,16 @@ export function validateAction(
   action: GameAction
 ): { valid: boolean; error?: string } {
   const currentPlayerId = state.turnOrder[state.currentPlayerIndex];
+  const pendingDrawDecision = state.pendingDrawDecision;
+
+  if (pendingDrawDecision) {
+    if (action.type !== "resolveDrawDecision") {
+      return { valid: false, error: "Resolve the drawn card first" };
+    }
+    if (pendingDrawDecision.playerId !== playerId) {
+      return { valid: false, error: "Not your draw decision" };
+    }
+  }
 
   switch (action.type) {
     case "playCards": {
@@ -203,6 +225,33 @@ export function validateAction(
       if (state.unoCallStatus[action.targetUserId]) {
         return { valid: false, error: "Target already called UNO" };
       }
+      return { valid: true };
+    }
+
+    case "resolveDrawDecision": {
+      if (!pendingDrawDecision) {
+        return { valid: false, error: "No drawn card to resolve" };
+      }
+
+      if (action.decision === "keep") {
+        return { valid: true };
+      }
+
+      const hand = state.hands[playerId];
+      const drawnCard = hand.find((card) => card.id === pendingDrawDecision.cardId);
+      if (!drawnCard) {
+        return { valid: false, error: "Drawn card not in hand" };
+      }
+
+      const topDiscard = state.discardPile[state.discardPile.length - 1];
+      if (!getPlayableCards([drawnCard], topDiscard, state.currentColor).length) {
+        return { valid: false, error: "Drawn card is not playable" };
+      }
+
+      if ((drawnCard.type === "wild" || drawnCard.type === "wild4") && !action.chosenColor) {
+        return { valid: false, error: "Must choose color for wild card" };
+      }
+
       return { valid: true };
     }
   }

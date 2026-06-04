@@ -34,7 +34,6 @@ export function OpponentBar({ view, myUserId, catchableUserIds }: OpponentBarPro
               player={player}
               isCurrentTurn={isCurrentTurn}
               seatIndex={seatIndex}
-              small={true}
             />
             <div className="relative flex items-center justify-center">
               <div className="flex -space-x-4 opacity-40">

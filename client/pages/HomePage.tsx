@@ -77,10 +77,9 @@ export function HomePage() {
               className="absolute opacity-[0.12]"
               style={{
                 transform: DECO_TRANSFORMS[i],
-                animation: `fade-slide-in 0.5s ease-out ${i * 100}ms both`,
               }}
             >
-              <UnoCard card={card} size="small" />
+              <UnoCard card={card} size="small" playable={true} hoverable={false} />
             </div>
           ))}
         </div>
@@ -89,7 +88,8 @@ export function HomePage() {
           <h1
             className="text-7xl md:text-8xl font-black tracking-tight"
             style={{
-              background: "linear-gradient(135deg, #ef4444, #f59e0b, #22c55e, #3b82f6)",
+              background: "#000",
+              textShadow: "2px 2px 2px #FFDC00",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               filter: "drop-shadow(0 4px 12px rgba(239, 68, 68, 0.2))",
@@ -97,7 +97,7 @@ export function HomePage() {
           >
             UNO
           </h1>
-          <p className="text-neutral-400 text-sm mt-1 tracking-wide">Play with friends</p>
+          <p className="text-neutral-400 text-sm mt-1 tracking-wide">Play with Friends!</p>
         </div>
       </div>
 
@@ -106,7 +106,7 @@ export function HomePage() {
           className="flex flex-col items-center gap-5 w-full max-w-xs"
           style={{ animation: "fade-slide-in 0.4s ease-out 0.3s both" }}
         >
-          <div className="w-full bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 text-center">
+          <div className="w-full bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 text-center backdrop-blur-sm">
             <p className="text-neutral-300 text-sm mb-5">
               Sign in to start playing
             </p>
@@ -132,7 +132,7 @@ export function HomePage() {
           <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-5">
             <button
               onClick={handleCreate}
-              className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold text-lg hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 active:scale-[0.98]"
+              className="w-full py-3.5 bg-red-600 text-white rounded-xl font-bold text-lg hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 active:scale-[0.98] cursor-pointer"
             >
               Create Game
             </button>
@@ -155,7 +155,7 @@ export function HomePage() {
               <button
                 onClick={handleJoin}
                 disabled={joinCode.length < 4}
-                className="px-5 py-3 bg-neutral-700 text-white rounded-xl font-bold hover:bg-neutral-600 transition-all disabled:opacity-30 active:scale-[0.98]"
+                className="px-5 py-3 bg-neutral-700 text-white rounded-xl font-bold hover:bg-neutral-600 transition-all disabled:opacity-30 active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed"
               >
                 Join
               </button>

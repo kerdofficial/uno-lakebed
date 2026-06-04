@@ -163,5 +163,6 @@ export function initializeGame(
     winner: null,
     lastAction: null,
     unoCallStatus: {},
+    pendingDrawDecision: null,
   };
 }

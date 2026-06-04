@@ -154,6 +154,10 @@ export const mutations = {
       updateData.winnerId = newState.winner;
       updateData.roundsPlayed = String(numberField(game.roundsPlayed) + 1);
 
+      for (const player of players) {
+        ctx.db.players.update(player.id, { isReady: false });
+      }
+
       const winner = players.find((player: any) => player.userId === newState.winner);
       if (winner) {
         ctx.db.players.update(winner.id, {

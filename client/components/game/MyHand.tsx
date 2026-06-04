@@ -5,9 +5,12 @@ import { UnoCard } from "../cards/UnoCard";
 type MyHandProps = {
   view: PlayerView;
   selectedCards: Set<string>;
+  unoArmed: boolean;
   onToggleCard: (id: string) => void;
+  onToggleUnoArmed: () => void;
   onPlaySelected: () => void;
   onClearSelection: () => void;
+  colorPickerVisible: boolean;
 };
 
 function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card) {
@@ -34,9 +37,12 @@ function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card)
 export function MyHand({
   view,
   selectedCards,
+  unoArmed,
   onToggleCard,
+  onToggleUnoArmed,
   onPlaySelected,
   onClearSelection,
+  colorPickerVisible,
 }: MyHandProps) {
   const overlapPx = Math.max(16, 42 - view.myHand.length * 2);
   const hasDealt = useRef(false);
@@ -75,20 +81,34 @@ export function MyHand({
   }, [view.myHand]);
 
   const length = view.myHand.length;
+  const showUnoToggle =
+    selectedCards.size > 0 && view.myHand.length - selectedCards.size === 1;
 
   return (
     <div className="flex flex-col items-center gap-2 pb-4">
       {selectedCards.size > 0 && (
         <div className="flex items-center gap-2 mb-2" style={{ animation: "bounce-in 0.3s ease-out" }}>
+          {showUnoToggle && (
+            <button
+              onClick={onToggleUnoArmed}
+              className={`font-black text-sm px-4 py-2 rounded-full shadow-lg transition-colors cursor-pointer ${
+                unoArmed
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+            >
+              {unoArmed ? "UNO armed" : "Call UNO"}
+            </button>
+          )}
           <button
             onClick={onPlaySelected}
-            className="bg-red-600 text-white font-bold text-sm px-5 py-2 rounded-full shadow-lg hover:bg-red-700 transition-colors"
+            className="bg-red-600 text-white font-bold text-sm px-5 py-2 rounded-full shadow-lg hover:bg-red-700 transition-colors cursor-pointer"
           >
             Play {selectedCards.size} card{selectedCards.size > 1 ? "s" : ""}
           </button>
           <button
             onClick={onClearSelection}
-            className="bg-neutral-700 text-white rounded-full w-7 h-7 text-xs flex items-center justify-center hover:bg-neutral-600 transition-colors"
+            className="bg-neutral-700 text-white rounded-full w-7 h-7 text-xs flex items-center justify-center hover:bg-neutral-600 transition-colors cursor-pointer"
           >
             X
           </button>
@@ -118,7 +138,7 @@ export function MyHand({
               key={card.id}
               style={{
                 marginLeft: `${marginLeft}px`,
-                zIndex: isSelected ? 50 : index,
+                zIndex: isSelected || colorPickerVisible ? 50 : index,
                 scrollSnapAlign: "center",
                 animation: animationStyle,
               }}
@@ -133,6 +153,7 @@ export function MyHand({
                 <UnoCard
                   card={card}
                   playable={isPlayable}
+                  colorPickerVisible={colorPickerVisible}
                   selected={isSelected}
                   onClick={() => isPlayable && onToggleCard(card.id)}
                 />

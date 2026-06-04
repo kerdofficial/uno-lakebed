@@ -96,7 +96,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
         </div>
         <button
           onClick={handleCopyCode}
-          className="text-4xl md:text-5xl font-mono font-black tracking-[0.3em] text-white hover:text-neutral-200 transition-colors relative active:scale-[0.98]"
+          className="text-4xl md:text-5xl font-mono font-black tracking-[0.3em] text-white hover:text-neutral-200 transition-colors relative active:scale-[0.98] cursor-pointer"
         >
           {game.code}
         </button>
@@ -115,6 +115,37 @@ export function LobbyView({ game, players }: LobbyViewProps) {
       </div>
 
       <div className="w-full max-w-sm space-y-4">
+
+        {myPlayer && (
+          <div
+            className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
+            style={{ animation: "fade-slide-in 0.3s ease-out 0.2s both" }}
+          >
+            <div className="text-neutral-500 text-xs mb-2 text-center font-medium uppercase tracking-wider">
+              Your display name
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={displayName}
+                maxLength={24}
+                onInput={(event) => setDisplayName((event.target as HTMLInputElement).value)}
+                className="min-w-0 flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-neutral-400 transition-colors"
+              />
+              <button
+                onClick={handleSaveDisplayName}
+                disabled={displayName.trim() === myPlayer.displayName}
+                className="px-4 py-2.5 bg-neutral-700 text-white rounded-xl text-sm font-medium hover:bg-neutral-600 transition-all disabled:opacity-30 active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+            {nameError && (
+              <div className="text-red-400 text-xs text-center mt-2">{nameError}</div>
+            )}
+          </div>
+        )}
+
         <div
           className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
           style={{ animation: "fade-slide-in 0.3s ease-out 0.1s both" }}
@@ -185,7 +216,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
                     {isHost && player.userId !== auth.userId && (
                       <button
                         onClick={() => kickPlayer(game.id, player.userId)}
-                        className="text-[10px] text-neutral-600 hover:text-red-400 transition-colors px-1"
+                        className="text-[10px] text-neutral-600 hover:text-red-400 transition-colors px-1 cursor-pointer"
                       >
                         Kick
                       </button>
@@ -203,35 +234,6 @@ export function LobbyView({ game, players }: LobbyViewProps) {
           </div>
         </div>
 
-        {myPlayer && (
-          <div
-            className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
-            style={{ animation: "fade-slide-in 0.3s ease-out 0.2s both" }}
-          >
-            <div className="text-neutral-500 text-xs mb-2 text-center font-medium uppercase tracking-wider">
-              Your display name
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={displayName}
-                maxLength={24}
-                onInput={(event) => setDisplayName((event.target as HTMLInputElement).value)}
-                className="min-w-0 flex-1 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-neutral-400 transition-colors"
-              />
-              <button
-                onClick={handleSaveDisplayName}
-                disabled={displayName.trim() === myPlayer.displayName}
-                className="px-4 py-2.5 bg-neutral-700 text-white rounded-xl text-sm font-medium hover:bg-neutral-600 transition-all disabled:opacity-30 active:scale-[0.98]"
-              >
-                Save
-              </button>
-            </div>
-            {nameError && (
-              <div className="text-red-400 text-xs text-center mt-2">{nameError}</div>
-            )}
-          </div>
-        )}
 
         {leaderboard.some((p) => Number(p.wins || 0) > 0) && (
           <div
@@ -274,9 +276,9 @@ export function LobbyView({ game, players }: LobbyViewProps) {
         {!isHost && myPlayer && (
           <button
             onClick={() => toggleReady(game.id)}
-            className={`px-7 py-3 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
+            className={`px-7 py-3 rounded-xl font-bold text-sm transition-all active:scale-[0.98] cursor-pointer ${
               myPlayer.isReady
-                ? "bg-neutral-800 text-neutral-300 border border-neutral-700 hover:bg-neutral-700"
+                ? "bg-amber-800 text-neutral-300 border border-amber-700 hover:bg-amber-700"
                 : "bg-green-600 text-white hover:bg-green-500 shadow-lg shadow-green-600/20"
             }`}
           >
@@ -287,7 +289,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
           <button
             onClick={() => startGame(game.id)}
             disabled={!canStart}
-            className="px-7 py-3 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-red-600/20 active:scale-[0.98]"
+            className="px-7 py-3 bg-white text-black rounded-xl font-bold text-sm hover:bg-neutral-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-neutral-600/20 active:scale-[0.98] cursor-pointer"
           >
             {game.status === "finished" ? "Next Round" : "Start Game"}
           </button>
@@ -295,14 +297,14 @@ export function LobbyView({ game, players }: LobbyViewProps) {
         {isHost && game.status === "finished" && (
           <button
             onClick={handleCloseRoom}
-            className="px-5 py-3 text-neutral-500 text-sm hover:text-red-400 transition-colors"
+            className="px-5 py-3 bg-red-800 rounded-xl text-white text-sm hover:bg-red-700 hover:text-white transition-colors cursor-pointer"
           >
             Close room
           </button>
         )}
         <button
           onClick={handleLeave}
-          className="px-5 py-3 text-neutral-500 text-sm hover:text-red-400 transition-colors"
+          className="px-5 py-3 bg-neutral-800 rounded-xl text-neutral-500 text-sm hover:bg-neutral-700 hover:text-red-400 transition-colors cursor-pointer"
         >
           Leave
         </button>

@@ -1,17 +1,30 @@
 import { useRef, useEffect, useState } from "preact/hooks";
 import type { PlayerView } from "../../../shared/gameTypes";
-import { CARD_BORDER_COLORS, CARD_GLOW_SHADOW } from "../../utils/cardUi";
+import { CARD_GLOW_SHADOW } from "../../utils/cardUi";
 import { UnoCard } from "../cards/UnoCard";
 import { DirectionIndicator } from "./DirectionIndicator";
 
 type PlayAreaProps = {
-  view: PlayerView;
+  view: PlayerView; 
   onDraw: () => void;
   isMyTurn: boolean;
+  onPlaySelected: () => void;
 };
 
-export function PlayArea({ view, onDraw, isMyTurn }: PlayAreaProps) {
+export function PlayArea({ view, onDraw, isMyTurn, onPlaySelected }: PlayAreaProps) {
   const currentPlayer = view.turnOrder[view.currentPlayerIndex];
+  const actionParts =
+    view.lastActionParts && view.lastActionParts.length > 0
+      ? view.lastActionParts
+      : view.lastAction
+        ? [{ text: view.lastAction, kind: "text" as const }]
+        : [];
+  const colorClassByColor = {
+    red: "text-red-400",
+    yellow: "text-yellow-300",
+    green: "text-green-400",
+    blue: "text-blue-400",
+  } as const;
 
   const prevDiscardIdRef = useRef(view.discardTop.id);
   const [discardAnimStyle, setDiscardAnimStyle] = useState<Record<string, string>>({});
@@ -42,14 +55,14 @@ export function PlayArea({ view, onDraw, isMyTurn }: PlayAreaProps) {
   const glowShadow = CARD_GLOW_SHADOW[view.currentColor] || "";
 
   return (
-    <div className="flex flex-col items-center gap-4 py-6">
+    <div className="flex flex-col items-center gap-6 py-6">
       <div className="flex items-center gap-3">
         <DirectionIndicator direction={view.direction} />
 
         {isMyTurn ? (
           <div
             className="bg-amber-400/10 px-4 py-1 rounded-full"
-            style={{ animation: "turn-pulse 2s ease-in-out infinite" }}
+            style={{ animation: "turn-pulse 1.5s ease-in-out infinite" }}
           >
             <span className="text-base md:text-lg font-bold text-amber-300">
               YOUR TURN
@@ -76,7 +89,7 @@ export function PlayArea({ view, onDraw, isMyTurn }: PlayAreaProps) {
       <div className="flex items-center gap-8">
         <button
           onClick={onDraw}
-          className="relative group hover:scale-105 transition-transform"
+          className="relative group hover:scale-105 transition-transform cursor-pointer disabled:cursor-not-allowed"
           disabled={!view.canPlay && !view.canStack && !view.mustDraw}
         >
           <div className="relative group-disabled:opacity-50">
@@ -98,6 +111,7 @@ export function PlayArea({ view, onDraw, isMyTurn }: PlayAreaProps) {
 
         <div
           className="relative rounded-xl"
+          onClick={onPlaySelected}
           style={{ boxShadow: glowShadow }}
         >
           <UnoCard
@@ -113,10 +127,31 @@ export function PlayArea({ view, onDraw, isMyTurn }: PlayAreaProps) {
       {view.lastAction && (
         <div
           key={actionAnimKey}
-          className="bg-neutral-800/80 backdrop-blur-sm text-neutral-300 text-sm px-4 py-1.5 rounded-full mt-2"
+          className="max-w-[min(92vw,42rem)] bg-neutral-800/80 backdrop-blur-sm text-neutral-300 text-sm px-4 py-2 rounded-2xl text-center leading-relaxed"
           style={{ animation: "fade-slide-in 0.4s ease-out" }}
         >
-          {view.lastAction}
+          {actionParts.map((part, index) => {
+            const className =
+              part.kind === "player"
+                ? "font-bold text-white"
+                : part.kind === "color"
+                  ? `${colorClassByColor[part.color || "red"]} font-bold`
+                  : part.kind === "card"
+                    ? "font-bold text-neutral-100"
+                    : "";
+
+            const needsTrailingSpace =
+              index < actionParts.length - 1 &&
+              part.text !== "(" &&
+              part.text !== ",";
+
+            return (
+              <span key={`${part.kind}-${index}`} className={className}>
+                {part.text}
+                {part.text === "," ? " " : needsTrailingSpace ? " " : ""}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>

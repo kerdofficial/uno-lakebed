@@ -22,7 +22,8 @@ export function applyCards(
   state: GameState,
   playerId: string,
   cardIds: string[],
-  chosenColor?: CardColor
+  chosenColor?: CardColor,
+  callUno = false
 ): GameState {
   const { hand, playedCards } = removePlayedCards(state.hands[playerId], cardIds);
   const lastCard = playedCards[playedCards.length - 1];
@@ -36,6 +37,11 @@ export function applyCards(
     hands: { ...state.hands, [playerId]: hand },
     discardPile: [...state.discardPile, ...playedCards],
     currentColor,
+    pendingDrawDecision: null,
+    unoCallStatus: {
+      ...state.unoCallStatus,
+      [playerId]: callUno && hand.length === 1,
+    },
   };
 
   if (hand.length === 0 && !nextState.finishedPlayers.includes(playerId)) {
@@ -108,7 +114,8 @@ export function applyStack(
   state: GameState,
   playerId: string,
   cardIds: string[],
-  chosenColor?: CardColor
+  chosenColor?: CardColor,
+  callUno = false
 ): GameState {
   const { hand, playedCards } = removePlayedCards(state.hands[playerId], cardIds);
   const lastCard = playedCards[playedCards.length - 1];
@@ -127,6 +134,11 @@ export function applyStack(
         ? chosenColor || state.currentColor
         : lastCard.color || state.currentColor,
     pendingDrawStack: state.pendingDrawStack + drawAmount,
+    pendingDrawDecision: null,
+    unoCallStatus: {
+      ...state.unoCallStatus,
+      [playerId]: callUno && hand.length === 1,
+    },
   };
 
   if (hand.length === 0 && !nextState.finishedPlayers.includes(playerId)) {
@@ -154,6 +166,7 @@ export function applyChosenColor(
   let nextState: GameState = {
     ...state,
     currentColor: chosenColor,
+    pendingDrawDecision: null,
     lastAction: state.lastAction
       ? `${state.lastAction} (chose ${chosenColor})`
       : `${playerId} chose ${chosenColor}`,
@@ -183,6 +196,7 @@ export function applyDraw(state: GameState, playerId: string): GameState {
     finishedPlayers: nextState.finishedPlayers.filter((id) => id !== playerId),
     pendingDrawStack: 0,
     pendingDrawTarget: null,
+    pendingDrawDecision: null,
     phase: "play" as GamePhase,
     lastAction: `${playerId} drew ${state.pendingDrawStack} cards`,
   };
@@ -197,7 +211,7 @@ export function applyNormalDraw(state: GameState, playerId: string): GameState {
 
   if (drawn.length === 0) {
     return {
-      ...advanceTurn(nextState, 0),
+      ...advanceTurn({ ...nextState, pendingDrawDecision: null }, 0),
       lastAction: `${playerId} could not draw`,
     };
   }
@@ -208,10 +222,18 @@ export function applyNormalDraw(state: GameState, playerId: string): GameState {
     ...nextState,
     hands: { ...nextState.hands, [playerId]: hand },
     unoCallStatus: { ...nextState.unoCallStatus, [playerId]: false },
+    pendingDrawDecision: null,
   };
 
   if (isCardPlayable(drawnCard, state.discardPile[state.discardPile.length - 1], state.currentColor)) {
-    return applyCards(stateWithDrawn, playerId, [drawnCard.id]);
+    return {
+      ...stateWithDrawn,
+      pendingDrawDecision: {
+        playerId,
+        cardId: drawnCard.id,
+      },
+      lastAction: `${playerId} drew a playable card`,
+    };
   }
 
   const result = advanceTurn(stateWithDrawn, 0);
@@ -237,16 +259,20 @@ export function applyAction(
   switch (action.type) {
     case "playCards":
       return applyCards(
-        {
-          ...state,
-          unoCallStatus: { ...state.unoCallStatus, [playerId]: false },
-        },
+        state,
         playerId,
         action.cardIds,
-        action.chosenColor
+        action.chosenColor,
+        !!action.callUno
       );
     case "stackCards":
-      return applyStack(state, playerId, action.cardIds, action.chosenColor);
+      return applyStack(
+        state,
+        playerId,
+        action.cardIds,
+        action.chosenColor,
+        !!action.callUno
+      );
     case "drawCards":
       if (state.phase === "stacking" && state.pendingDrawTarget === playerId) {
         return applyDraw(state, playerId);
@@ -269,6 +295,31 @@ export function applyAction(
         },
         lastAction: `${playerId} caught ${action.targetUserId} not calling UNO!`,
       };
+    }
+    case "resolveDrawDecision": {
+      if (action.decision === "keep") {
+        return {
+          ...advanceTurn(
+            {
+              ...state,
+              pendingDrawDecision: null,
+            },
+            0
+          ),
+          lastAction: `${playerId} kept the drawn card`,
+        };
+      }
+
+      return applyCards(
+        {
+          ...state,
+          pendingDrawDecision: null,
+        },
+        playerId,
+        [state.pendingDrawDecision!.cardId],
+        action.chosenColor,
+        !!action.callUno
+      );
     }
   }
 }

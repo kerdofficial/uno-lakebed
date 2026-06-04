@@ -18,7 +18,7 @@ export function GameControls({
       {view.unoCallable && (
         <button
           onClick={onUno}
-          className="px-6 py-2.5 bg-red-600 text-white text-base font-black rounded-full shadow-lg hover:bg-red-700 transition-colors"
+          className="px-6 py-2.5 bg-red-600 text-white text-base font-black rounded-full shadow-lg hover:bg-red-700 transition-colors cursor-pointer"
           style={{
             animation: "bounce-in 0.4s ease-out, glow-pulse 1.5s ease-in-out 0.4s infinite",
             "--glow-color": "rgba(239, 68, 68, 0.5)",
@@ -33,8 +33,8 @@ export function GameControls({
           <button
             key={userId}
             onClick={() => onCatchUno(userId)}
-            className="px-5 py-2 bg-orange-500 text-white text-sm font-bold rounded-full shadow-md hover:bg-orange-600 transition-colors"
-            style={{ animation: "bounce-in 0.3s ease-out, shake 0.5s ease-in-out 0.3s" }}
+            className="px-5 py-2 bg-orange-500 text-white text-sm font-bold rounded-full shadow-md hover:bg-orange-600 transition-colors cursor-pointer"
+            style={{ animation: "bounce-in 0.3s ease-out, shake 0.8s ease-in-out 0.3s infinite" }}
           >
             Catch {player?.displayName}!
           </button>
@@ -43,7 +43,7 @@ export function GameControls({
       {view.mustDraw && (
         <button
           onClick={onDraw}
-          className={`px-5 py-2 text-white text-sm font-bold rounded-full shadow-md transition-colors ${
+          className={`px-5 py-2 text-white text-sm font-bold rounded-full shadow-md transition-colors cursor-pointer ${
             view.phase === "stacking"
               ? "bg-red-700 hover:bg-red-800"
               : "bg-amber-600 hover:bg-amber-700"

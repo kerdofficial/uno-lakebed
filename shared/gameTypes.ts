@@ -36,6 +36,10 @@ export type GameState = {
   winner: string | null;
   lastAction: string | null;
   unoCallStatus: Record<string, boolean>;
+  pendingDrawDecision: {
+    playerId: string;
+    cardId: string;
+  } | null;
 };
 
 export type PlayerInfo = {
@@ -44,6 +48,12 @@ export type PlayerInfo = {
   picture: string;
   cardCount: number;
   calledUno: boolean;
+};
+
+export type ActionTextPart = {
+  text: string;
+  kind: "text" | "player" | "color" | "card";
+  color?: CardColor | null;
 };
 
 export type PlayerView = {
@@ -57,6 +67,7 @@ export type PlayerView = {
   turnOrder: PlayerInfo[];
   phase: GamePhase;
   lastAction: string | null;
+  lastActionParts?: ActionTextPart[];
   canPlay: boolean;
   playableCardIds: string[];
   canStack: boolean;
@@ -66,6 +77,7 @@ export type PlayerView = {
   unoCallable: boolean;
   unoCatchable: string[];
   drawPileCount: number;
+  pendingDrawDecisionCard: Card | null;
   winner: string | null;
   finishedPlayers: string[];
 };
@@ -74,12 +86,14 @@ export type PlayCardsAction = {
   type: "playCards";
   cardIds: string[];
   chosenColor?: CardColor;
+  callUno?: boolean;
 };
 
 export type StackCardsAction = {
   type: "stackCards";
   cardIds: string[];
   chosenColor?: CardColor;
+  callUno?: boolean;
 };
 
 export type DrawCardsAction = {
@@ -100,13 +114,21 @@ export type CatchUnoAction = {
   targetUserId: string;
 };
 
+export type ResolveDrawDecisionAction = {
+  type: "resolveDrawDecision";
+  decision: "keep" | "play";
+  chosenColor?: CardColor;
+  callUno?: boolean;
+};
+
 export type GameAction =
   | PlayCardsAction
   | StackCardsAction
   | DrawCardsAction
   | ChooseColorAction
   | CallUnoAction
-  | CatchUnoAction;
+  | CatchUnoAction
+  | ResolveDrawDecisionAction;
 
 export type GameSettings = {
   maxPlayers: number;
