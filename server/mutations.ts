@@ -147,9 +147,12 @@ export const mutations = {
     const gameState: GameState = JSON.parse(game.state);
     const action: GameAction = JSON.parse(actionJson);
     const newState = applyAction(gameState, ctx.auth.userId, action);
-    const updateData: any = { state: JSON.stringify(newState) };
+    const updateData: any = {
+      state: JSON.stringify(newState),
+      winnerId: newState.winner || "",
+    };
 
-    if (newState.winner) {
+    if (newState.phase === "finished" && newState.winner) {
       updateData.status = "finished";
       updateData.winnerId = newState.winner;
       updateData.roundsPlayed = String(numberField(game.roundsPlayed) + 1);

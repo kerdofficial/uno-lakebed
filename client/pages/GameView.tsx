@@ -237,6 +237,17 @@ export function GameView({
       (player) => player.userId === view.winner,
     );
     const isMe = view.winner === auth.userId;
+    const myPlacement = view.placements.findIndex((playerId) => playerId === auth.userId);
+    const placementLabel =
+      myPlacement === 0
+        ? "1st"
+        : myPlacement === 1
+          ? "2nd"
+          : myPlacement === 2
+            ? "3rd"
+            : myPlacement >= 3
+              ? `${myPlacement + 1}th`
+              : null;
 
     return (
       <div className="flex flex-col items-center justify-center min-h-[80vh] gap-6 relative">
@@ -253,6 +264,14 @@ export function GameView({
         >
           {isMe ? "You won!" : `${winner?.displayName || "Someone"} won!`}
         </h2>
+        {placementLabel && (
+          <p
+            className="text-neutral-300 text-sm"
+            style={{ animation: "fade-slide-in 0.4s ease-out 0.3s both" }}
+          >
+            You finished {placementLabel}
+          </p>
+        )}
         {!isMe && (
           <p
             className="text-neutral-400 text-sm"
@@ -261,6 +280,36 @@ export function GameView({
             Better luck next time!
           </p>
         )}
+        <div
+          className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900/60 px-4 py-4"
+          style={{ animation: "fade-slide-in 0.4s ease-out 0.5s both" }}
+        >
+          <div className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-neutral-500">
+            Final Standings
+          </div>
+          <div className="space-y-2">
+            {view.placements.map((playerId, index) => {
+              const player = view.turnOrder.find((entry) => entry.userId === playerId);
+              const label =
+                index === 0 ? "1st" : index === 1 ? "2nd" : index === 2 ? "3rd" : `${index + 1}th`;
+              const isCurrentUser = playerId === auth.userId;
+              return (
+                <div
+                  key={playerId}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2 ${
+                    isCurrentUser ? "bg-neutral-800 text-white" : "bg-neutral-950/60 text-neutral-300"
+                  }`}
+                >
+                  <span className="text-sm font-medium">{label}</span>
+                  <span className="text-sm">
+                    {player?.displayName || "Unknown"}
+                    {isCurrentUser ? " (you)" : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <button
           onClick={onBackToLobby}
           className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-colors"
@@ -281,7 +330,7 @@ export function GameView({
 
   return (
     <div
-      className="flex flex-col h-[100dvh]"
+      className="flex flex-col h-[100dvh] overflow-hidden"
       style={{
         background:
           "radial-gradient(ellipse at 50% 60%, #1c1917 0%, #140f0b 40%, #0c0a09 70%, #050505 100%)",

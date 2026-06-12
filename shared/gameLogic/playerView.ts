@@ -85,6 +85,7 @@ export function computePlayerView(
     pendingDrawDecisionCard,
     winner: state.winner,
     finishedPlayers: state.finishedPlayers,
+    placements: state.placements || (state.winner ? [state.winner] : []),
   };
 }
 

@@ -33,6 +33,8 @@ export type GameState = {
   pendingDrawStack: number;
   pendingDrawTarget: string | null;
   finishedPlayers: string[];
+  revivableFinishedPlayers: string[];
+  placements: string[];
   winner: string | null;
   lastAction: string | null;
   unoCallStatus: Record<string, boolean>;
@@ -80,6 +82,7 @@ export type PlayerView = {
   pendingDrawDecisionCard: Card | null;
   winner: string | null;
   finishedPlayers: string[];
+  placements: string[];
 };
 
 export type PlayCardsAction = {

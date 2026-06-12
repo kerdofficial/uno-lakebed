@@ -1,4 +1,5 @@
 import type { Card, CardColor, GameState } from "../gameTypes";
+import { getPlacements, getRevivableFinishedPlayers } from "./state";
 
 export function isCardPlayable(
   card: Card,
@@ -34,11 +35,6 @@ export function getStackableCards(
 
 export function checkWinner(state: GameState): string | null {
   if (state.phase === "stacking") return null;
-
-  for (const playerId of state.finishedPlayers) {
-    const hand = state.hands[playerId];
-    if (!hand || hand.length === 0) return playerId;
-  }
-
-  return null;
+  if (getRevivableFinishedPlayers(state).length > 0) return null;
+  return getPlacements(state).length === state.turnOrder.length ? state.winner : null;
 }

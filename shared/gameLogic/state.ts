@@ -1,20 +1,31 @@
 import type { Card, CardColor, GameState } from "../gameTypes";
 import { createDeck, shuffleDeck } from "./deck";
 
+export function getRevivableFinishedPlayers(state: GameState): string[] {
+  return state.revivableFinishedPlayers || [];
+}
+
+export function getPlacements(state: GameState): string[] {
+  if (state.placements) return state.placements;
+  return state.winner ? [state.winner] : [];
+}
+
 export function getNextPlayerIndex(
   state: GameState,
   fromIndex: number,
   skip = 0,
-  includeFinished = false
+  includeRevivableFinished = false
 ): number {
   const { turnOrder, direction, finishedPlayers } = state;
+  const revivableFinishedPlayers = new Set(getRevivableFinishedPlayers(state));
   let index = fromIndex;
   const totalSteps = skip + 1;
 
   for (let stepsTaken = 0; stepsTaken < totalSteps;) {
     index = (index + direction + turnOrder.length) % turnOrder.length;
     const playerId = turnOrder[index];
-    if (includeFinished || !finishedPlayers.includes(playerId)) {
+    const isFinished = finishedPlayers.includes(playerId);
+    if (!isFinished || (includeRevivableFinished && revivableFinishedPlayers.has(playerId))) {
       stepsTaken++;
     }
   }
@@ -43,6 +54,10 @@ function getNextMatchingPlayerIndex(
 }
 
 function getNextPlayerIndexAfterSkips(state: GameState, skipCount: number): number {
+  if (getActivePlayerIds(state).length === 0) {
+    return state.currentPlayerIndex;
+  }
+
   if (skipCount <= 0) {
     return getNextPlayerIndex(state, state.currentPlayerIndex);
   }
@@ -67,10 +82,52 @@ function getNextPlayerIndexAfterSkips(state: GameState, skipCount: number): numb
   );
 }
 
-export function advanceTurn(state: GameState, skipCount = 0): GameState {
+function expireRevivableFinishedPlayers(
+  state: GameState,
+  fromIndex: number,
+  toIndex: number
+): string[] {
+  const remaining = new Set(getRevivableFinishedPlayers(state));
+  if (remaining.size === 0) {
+    return [...remaining];
+  }
+
+  if (fromIndex === toIndex) {
+    for (let step = 1; step < state.turnOrder.length; step++) {
+      const index =
+        (fromIndex + step * state.direction + state.turnOrder.length * state.turnOrder.length) %
+        state.turnOrder.length;
+      remaining.delete(state.turnOrder[index]);
+    }
+    return [...remaining];
+  }
+
+  let index = fromIndex;
+  while (true) {
+    index = (index + state.direction + state.turnOrder.length) % state.turnOrder.length;
+    if (index === toIndex) break;
+    remaining.delete(state.turnOrder[index]);
+  }
+
+  return [...remaining];
+}
+
+export function advanceTurn(
+  state: GameState,
+  skipCount = 0,
+  expireRevivableFinishedPlayersOnAdvance = true
+): GameState {
+  const currentPlayerIndex = getNextPlayerIndexAfterSkips(state, skipCount);
   return {
     ...state,
-    currentPlayerIndex: getNextPlayerIndexAfterSkips(state, skipCount),
+    currentPlayerIndex,
+    revivableFinishedPlayers: expireRevivableFinishedPlayersOnAdvance
+      ? expireRevivableFinishedPlayers(
+          state,
+          state.currentPlayerIndex,
+          currentPlayerIndex
+        )
+      : getRevivableFinishedPlayers(state),
   };
 }
 
@@ -160,6 +217,8 @@ export function initializeGame(
     pendingDrawStack: 0,
     pendingDrawTarget: null,
     finishedPlayers: [],
+    revivableFinishedPlayers: [],
+    placements: [],
     winner: null,
     lastAction: null,
     unoCallStatus: {},

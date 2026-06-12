@@ -1,6 +1,14 @@
 import type { Card, CardColor, GameAction, GamePhase, GameState } from "../gameTypes";
 import { buildActionDescription, cardLabel } from "./descriptions";
-import { advanceTurn, determineLastDrawType, drawCards, getActivePlayerIds, getNextPlayerIndex } from "./state";
+import {
+  advanceTurn,
+  determineLastDrawType,
+  drawCards,
+  getActivePlayerIds,
+  getNextPlayerIndex,
+  getPlacements,
+  getRevivableFinishedPlayers,
+} from "./state";
 import { checkWinner, isCardPlayable } from "./rules";
 import { validateAction } from "./playerView";
 
@@ -16,6 +24,80 @@ function removePlayedCards(hand: Card[], cardIds: string[]) {
   }
 
   return { hand: nextHand, playedCards };
+}
+
+function markPlayerFinished(state: GameState, playerId: string): GameState {
+  let nextState = state;
+
+  if (!nextState.finishedPlayers.includes(playerId)) {
+    nextState = {
+      ...nextState,
+      finishedPlayers: [...nextState.finishedPlayers, playerId],
+      revivableFinishedPlayers: [...getRevivableFinishedPlayers(nextState), playerId],
+    };
+  }
+
+  if (!getPlacements(nextState).includes(playerId)) {
+    nextState = {
+      ...nextState,
+      placements: [...getPlacements(nextState), playerId],
+      winner: nextState.winner || playerId,
+    };
+  }
+
+  return nextState;
+}
+
+function normalizePlacementState(state: GameState): GameState {
+  const validFinishedPlayers = new Set(state.finishedPlayers);
+  const placements = getPlacements(state).filter((playerId) => validFinishedPlayers.has(playerId));
+  const winner = placements[0] || null;
+
+  if (placements.length === getPlacements(state).length && winner === state.winner) {
+    return state;
+  }
+
+  return {
+    ...state,
+    placements,
+    winner,
+  };
+}
+
+function revivePlayer(state: GameState, playerId: string): GameState {
+  const placements = getPlacements(state).filter((id) => id !== playerId);
+
+  return {
+    ...state,
+    finishedPlayers: state.finishedPlayers.filter((id) => id !== playerId),
+    revivableFinishedPlayers: getRevivableFinishedPlayers(state).filter((id) => id !== playerId),
+    placements,
+    winner: placements[0] || null,
+  };
+}
+
+function finalizePlacementsIfResolved(state: GameState): GameState {
+  const revivableFinishedPlayers = getRevivableFinishedPlayers(state);
+  const activePlayerIds = getActivePlayerIds(state);
+  if (activePlayerIds.length === 0) {
+    return {
+      ...state,
+      revivableFinishedPlayers: [],
+    };
+  }
+
+  if (revivableFinishedPlayers.length > 0) return state;
+
+  if (activePlayerIds.length !== 1) return state;
+
+  const lastPlayerId = activePlayerIds[0];
+  if (getPlacements(state).includes(lastPlayerId)) return state;
+
+  return {
+    ...state,
+    finishedPlayers: [...state.finishedPlayers, lastPlayerId],
+    placements: [...getPlacements(state), lastPlayerId],
+  };
 }
 
 export function applyCards(
@@ -45,10 +127,7 @@ export function applyCards(
   };
 
   if (hand.length === 0 && !nextState.finishedPlayers.includes(playerId)) {
-    nextState = {
-      ...nextState,
-      finishedPlayers: [...nextState.finishedPlayers, playerId],
-    };
+    nextState = markPlayerFinished(nextState, playerId);
   }
 
   if ((lastCard.type === "wild" || lastCard.type === "wild4") && !chosenColor) {
@@ -92,6 +171,7 @@ export function applyCards(
   }
 
   nextState = advanceTurn(nextState, skipCount);
+  nextState = finalizePlacementsIfResolved(nextState);
 
   const winner = checkWinner(nextState);
   if (winner) {
@@ -142,10 +222,7 @@ export function applyStack(
   };
 
   if (hand.length === 0 && !nextState.finishedPlayers.includes(playerId)) {
-    nextState = {
-      ...nextState,
-      finishedPlayers: [...nextState.finishedPlayers, playerId],
-    };
+    nextState = markPlayerFinished(nextState, playerId);
   }
 
   const targetIndex = getNextPlayerIndex(nextState, state.currentPlayerIndex, 0, true);
@@ -184,6 +261,7 @@ export function applyChosenColor(
   }
 
   nextState = advanceTurn({ ...nextState, phase: "play" }, 0);
+  nextState = finalizePlacementsIfResolved(nextState);
   const winner = checkWinner(nextState);
   return winner ? { ...nextState, phase: "finished", winner } : nextState;
 }
@@ -191,9 +269,8 @@ export function applyChosenColor(
 export function applyDraw(state: GameState, playerId: string): GameState {
   const { state: nextState, drawn } = drawCards(state, state.pendingDrawStack);
   let result: GameState = {
-    ...nextState,
+    ...revivePlayer(nextState, playerId),
     hands: { ...nextState.hands, [playerId]: [...(nextState.hands[playerId] || []), ...drawn] },
-    finishedPlayers: nextState.finishedPlayers.filter((id) => id !== playerId),
     pendingDrawStack: 0,
     pendingDrawTarget: null,
     pendingDrawDecision: null,
@@ -201,7 +278,8 @@ export function applyDraw(state: GameState, playerId: string): GameState {
     lastAction: `${playerId} drew ${state.pendingDrawStack} cards`,
   };
 
-  result = advanceTurn(result, 0);
+  result = advanceTurn(result, 0, false);
+  result = finalizePlacementsIfResolved(result);
   const winner = checkWinner(result);
   return winner ? { ...result, phase: "finished", winner } : result;
 }
@@ -210,8 +288,15 @@ export function applyNormalDraw(state: GameState, playerId: string): GameState {
   const { state: nextState, drawn } = drawCards(state, 1);
 
   if (drawn.length === 0) {
+    const result = finalizePlacementsIfResolved(
+      advanceTurn({ ...nextState, pendingDrawDecision: null }, 0)
+    );
+    const winner = checkWinner(result);
+    if (winner) {
+      return { ...result, phase: "finished", winner, lastAction: `${playerId} could not draw` };
+    }
     return {
-      ...advanceTurn({ ...nextState, pendingDrawDecision: null }, 0),
+      ...result,
       lastAction: `${playerId} could not draw`,
     };
   }
@@ -237,13 +322,14 @@ export function applyNormalDraw(state: GameState, playerId: string): GameState {
   }
 
   const result = advanceTurn(stateWithDrawn, 0);
-  const winner = checkWinner(result);
+  const finalizedResult = finalizePlacementsIfResolved(result);
+  const winner = checkWinner(finalizedResult);
   if (winner) {
-    return { ...result, phase: "finished", winner };
+    return { ...finalizedResult, phase: "finished", winner };
   }
 
   return {
-    ...result,
+    ...finalizedResult,
     lastAction: `${playerId} drew a card`,
   };
 }
@@ -253,6 +339,7 @@ export function applyAction(
   playerId: string,
   action: GameAction
 ): GameState {
+  state = normalizePlacementState(state);
   const validation = validateAction(state, playerId, action);
   if (!validation.valid) throw new Error(validation.error);
 
@@ -298,14 +385,26 @@ export function applyAction(
     }
     case "resolveDrawDecision": {
       if (action.decision === "keep") {
-        return {
-          ...advanceTurn(
+        const result = finalizePlacementsIfResolved(
+          advanceTurn(
             {
               ...state,
               pendingDrawDecision: null,
             },
             0
-          ),
+          )
+        );
+        const winner = checkWinner(result);
+        if (winner) {
+          return {
+            ...result,
+            phase: "finished",
+            winner,
+            lastAction: `${playerId} kept the drawn card`,
+          };
+        }
+        return {
+          ...result,
           lastAction: `${playerId} kept the drawn card`,
         };
       }
