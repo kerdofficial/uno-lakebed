@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Card, PlayerView } from "../../../shared/gameTypes";
 import { UnoCard } from "../cards/UnoCard";
 
@@ -12,6 +12,11 @@ type MyHandProps = {
   onClearSelection: () => void;
   colorPickerVisible: boolean;
 };
+
+const ANGLE_STEP = 3;
+const MAX_DROP = 20;
+const LIFT_PAD = 36;
+const DROP_PAD = 26;
 
 function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card) {
   if (selectedCards.has(card.id)) return true;
@@ -34,6 +39,10 @@ function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card)
   return false;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export function MyHand({
   view,
   selectedCards,
@@ -44,18 +53,20 @@ export function MyHand({
   onClearSelection,
   colorPickerVisible,
 }: MyHandProps) {
-  const overlapPx = Math.max(16, 42 - view.myHand.length * 2);
+  const length = view.myHand.length;
+  const overlapPx = Math.max(16, 42 - length * 2);
+
   const hasDealt = useRef(false);
   const prevCardIds = useRef<Set<string>>(new Set());
   const [newCardIds, setNewCardIds] = useState<Set<string>>(new Set());
 
-  const isFirstDeal = !hasDealt.current && view.myHand.length > 0;
+  const isFirstDeal = !hasDealt.current && length > 0;
 
   useEffect(() => {
-    if (view.myHand.length > 0 && !hasDealt.current) {
+    if (length > 0 && !hasDealt.current) {
       hasDealt.current = true;
     }
-  }, [view.myHand.length]);
+  }, [length]);
 
   useEffect(() => {
     if (!hasDealt.current) {
@@ -80,9 +91,121 @@ export function MyHand({
     }
   }, [view.myHand]);
 
-  const length = view.myHand.length;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState({ containerWidth: 0, cardWidth: 64 });
+
+  const measure = useCallback(() => {
+    const containerWidth = containerRef.current?.clientWidth ?? 0;
+    const cardWidth = cardRef.current?.offsetWidth || 64;
+    setDims((prev) =>
+      prev.containerWidth === containerWidth && prev.cardWidth === cardWidth
+        ? prev
+        : { containerWidth, cardWidth },
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+  }, [length, measure]);
+
+  useEffect(() => {
+    const handler = () => measure();
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [measure]);
+
+  const spacing = Math.max(20, dims.cardWidth - overlapPx);
+  const fanWidth = length > 0 ? dims.cardWidth + (length - 1) * spacing : 0;
+  const needsSliding =
+    dims.containerWidth > 0 && fanWidth > dims.containerWidth - 12;
+
+  const centerC = (length - 1) / 2;
+  const [center, setCenter] = useState(centerC);
+
+  useEffect(() => {
+    setCenter((length - 1) / 2);
+  }, [length]);
+
+  const activeC = needsSliding ? clamp(center, 0, length - 1) : centerC;
+  const slideX = spacing * (centerC - activeC);
+
+  const drag = useRef<{
+    startX: number;
+    startC: number;
+    lastX: number;
+    vc: number;
+    pointerId: number;
+    captured: boolean;
+  } | null>(null);
+  const didDrag = useRef(false);
+  const animFrame = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const onPointerDown = useCallback(
+    (e: PointerEvent) => {
+      if (!needsSliding) return;
+      cancelAnimationFrame(animFrame.current);
+      didDrag.current = false;
+      drag.current = {
+        startX: e.clientX,
+        startC: clamp(center, 0, length - 1),
+        lastX: e.clientX,
+        vc: 0,
+        pointerId: e.pointerId,
+        captured: false,
+      };
+      setIsDragging(true);
+    },
+    [needsSliding, center, length],
+  );
+
+  const onPointerMove = useCallback(
+    (e: PointerEvent) => {
+      if (!drag.current) return;
+      const dxTotal = e.clientX - drag.current.startX;
+      if (Math.abs(dxTotal) > 6) {
+        didDrag.current = true;
+        if (!drag.current.captured) {
+          (e.currentTarget as HTMLElement).setPointerCapture?.(drag.current.pointerId);
+          drag.current.captured = true;
+        }
+      }
+      const dxStep = e.clientX - drag.current.lastX;
+      drag.current.lastX = e.clientX;
+      drag.current.vc = -dxStep / spacing;
+      setCenter(clamp(drag.current.startC - dxTotal / spacing, 0, length - 1));
+    },
+    [spacing, length],
+  );
+
+  const endDrag = useCallback(() => {
+    if (!drag.current) return;
+    let vc = drag.current.vc;
+    drag.current = null;
+    setIsDragging(false);
+
+    const step = () => {
+      vc *= 0.92;
+      if (Math.abs(vc) < 0.003) return;
+      setCenter((prev) => clamp(prev + vc, 0, length - 1));
+      animFrame.current = requestAnimationFrame(step);
+    };
+    if (Math.abs(vc) > 0.01) {
+      animFrame.current = requestAnimationFrame(step);
+    }
+  }, [length]);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(animFrame.current);
+  }, []);
+
   const showUnoToggle =
-    selectedCards.size > 0 && view.myHand.length - selectedCards.size === 1;
+    selectedCards.size > 0 && length - selectedCards.size === 1;
+
+  const transformTransition = isDragging
+    ? "none"
+    : "transform 0.3s ease-out";
 
   return (
     <div className="flex flex-col items-center gap-2 pb-4">
@@ -115,53 +238,88 @@ export function MyHand({
         </div>
       )}
       <div
-        className="flex justify-center items-end overflow-x-visible max-w-full px-2 py-4"
-        style={{ scrollSnapType: "x mandatory" }}
+        ref={containerRef}
+        className="w-full overflow-hidden"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        style={{
+          paddingTop: `${LIFT_PAD}px`,
+          paddingBottom: `${DROP_PAD}px`,
+          touchAction: needsSliding ? "pan-y" : "auto",
+          cursor: needsSliding ? (isDragging ? "grabbing" : "grab") : "default",
+        }}
       >
-        {view.myHand.map((card, index) => {
-          const isPlayable = canToggleCard(view, selectedCards, card);
-          const isSelected = selectedCards.has(card.id);
-          const marginLeft = index === 0 ? 0 : -overlapPx;
+        <div
+          className="flex justify-center items-end w-fit mx-auto"
+          style={{
+            transform: `translateX(${slideX}px)`,
+            transition: isDragging ? "none" : "transform 0.25s ease-out",
+            willChange: "transform",
+          }}
+        >
+          {view.myHand.map((card, index) => {
+            const isPlayable = canToggleCard(view, selectedCards, card);
+            const isSelected = selectedCards.has(card.id);
+            const marginLeft = index === 0 ? 0 : -overlapPx;
 
-          const angle = (index - (length - 1) / 2) * 2.5;
-          const offsetY = Math.abs(index - (length - 1) / 2) * 3;
+            const rel = index - activeC;
+            const angle = clamp(rel, -6, 6) * ANGLE_STEP;
+            const offsetY = Math.min(MAX_DROP, rel * rel * 1.2);
 
-          let animationStyle: string | undefined;
-          if (isFirstDeal) {
-            animationStyle = `card-deal 0.4s ease-out ${index * 80}ms both`;
-          } else if (newCardIds.has(card.id)) {
-            animationStyle = "card-enter-hand 0.3s ease-out";
-          }
+            let animationStyle: string | undefined;
+            if (isFirstDeal) {
+              animationStyle = `card-deal 0.4s ease-out ${index * 80}ms both`;
+            } else if (newCardIds.has(card.id)) {
+              animationStyle = "card-enter-hand 0.3s ease-out";
+            }
 
-          return (
-            <div
-              key={card.id}
-              style={{
-                marginLeft: `${marginLeft}px`,
-                zIndex: isSelected || colorPickerVisible ? 50 : index,
-                scrollSnapAlign: "center",
-                animation: animationStyle,
-              }}
-            >
+            return (
               <div
+                key={card.id}
+                ref={index === 0 ? cardRef : undefined}
+                className="flex-shrink-0"
                 style={{
-                  transform: `rotate(${angle}deg) translateY(${offsetY}px)`,
-                  transformOrigin: "bottom center",
-                  transition: "transform 0.4s ease-out",
+                  marginLeft: `${marginLeft}px`,
+                  zIndex: isSelected || colorPickerVisible ? 50 : index,
+                  animation: animationStyle,
                 }}
               >
-                <UnoCard
-                  card={card}
-                  playable={isPlayable}
-                  colorPickerVisible={colorPickerVisible}
-                  selected={isSelected}
-                  onClick={() => isPlayable && onToggleCard(card.id)}
-                />
+                <div
+                  style={{
+                    transform: `rotate(${angle}deg) translateY(${offsetY}px)`,
+                    transformOrigin: "bottom center",
+                    transition: transformTransition,
+                  }}
+                >
+                  <UnoCard
+                    card={card}
+                    playable={isPlayable}
+                    colorPickerVisible={colorPickerVisible}
+                    selected={isSelected}
+                    onClick={() => {
+                      if (didDrag.current) return;
+                      if (isPlayable) onToggleCard(card.id);
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
+      {needsSliding && length > 1 && (
+        <div className="relative h-1 w-12 rounded-full bg-white/15">
+          <div
+            className="absolute top-0 h-1 w-4 rounded-full bg-white/70"
+            style={{
+              left: `${clamp(activeC / (length - 1), 0, 1) * (48 - 16)}px`,
+              transition: isDragging ? "none" : "left 0.2s ease-out",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

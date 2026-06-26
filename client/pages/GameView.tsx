@@ -19,6 +19,8 @@ type PlayerViewRecord = {
   view: string;
 };
 
+const FINISH_SCREEN_DELAY_MS = 1400;
+
 export function GameView({
   gameId,
   onBackToLobby,
@@ -40,6 +42,7 @@ export function GameView({
   const [triggerCard, setTriggerCard] = useState<Card | null>(null);
   const [unoArmed, setUnoArmed] = useState(false);
   const [drawDecisionUnoArmed, setDrawDecisionUnoArmed] = useState(false);
+  const [showFinishedScreen, setShowFinishedScreen] = useState(false);
 
   const viewRecord = allViews.find((entry) => entry.gameId === gameId);
   const view: PlayerView | null = viewRecord
@@ -47,6 +50,7 @@ export function GameView({
     : null;
 
   const animations = useGameAnimations(view);
+  const isFinished = view?.phase === "finished";
 
   const isMyTurn =
     !!view && view.turnOrder[view.currentPlayerIndex]?.userId === auth.userId;
@@ -55,6 +59,20 @@ export function GameView({
   const willHaveOneCardAfterSelectedPlay = !!view && view.myHand.length - selectedCount === 1;
   const pendingDrawDecisionCard = view?.pendingDrawDecisionCard || null;
   const canCallUnoForDrawDecision = !!view && view.myHand.length - 1 === 1;
+
+  useEffect(() => {
+    if (!isFinished) {
+      setShowFinishedScreen(false);
+      return;
+    }
+
+    setShowFinishedScreen(false);
+    const timeout = setTimeout(() => {
+      setShowFinishedScreen(true);
+    }, FINISH_SCREEN_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, [isFinished, view?.winner, view?.lastAction]);
 
   useEffect(() => {
     if (!willHaveOneCardAfterSelectedPlay && unoArmed) {
@@ -68,7 +86,18 @@ export function GameView({
     }
   }, [pendingDrawDecisionCard]);
 
+  useEffect(() => {
+    if (!isFinished) return;
+    setPendingAction(null);
+    setTriggerCard(null);
+    setSelectedCards(new Set());
+    setUnoArmed(false);
+    setDrawDecisionUnoArmed(false);
+    setShowColorPicker(false);
+  }, [isFinished]);
+
   const handleToggleCard = useCallback((cardId: string) => {
+    if (!view || view.phase === "finished") return;
     setSelectedCards((previous) => {
       const next = new Set(previous);
       if (next.has(cardId)) {
@@ -78,7 +107,7 @@ export function GameView({
       }
       return next;
     });
-  }, []);
+  }, [view]);
 
   const clearSelections = () => {
     setPendingAction(null);
@@ -90,7 +119,7 @@ export function GameView({
 
   const submitSelectedPlay = useCallback(
     async (cardIds: string[], chosenColor?: CardColor) => {
-      if (!view) return;
+      if (!view || view.phase === "finished") return;
 
       const actionType = view.canStack ? "stackCards" : "playCards";
       await gameAction(
@@ -109,6 +138,7 @@ export function GameView({
 
   const submitDrawDecision = useCallback(
     async (decision: "keep" | "play", chosenColor?: CardColor) => {
+      if (view?.phase === "finished") return;
       await gameAction(
         gameId,
         JSON.stringify({
@@ -123,11 +153,11 @@ export function GameView({
       setDrawDecisionUnoArmed(false);
       setShowColorPicker(false);
     },
-    [drawDecisionUnoArmed, gameAction, gameId],
+    [drawDecisionUnoArmed, gameAction, gameId, view?.phase],
   );
 
   const handlePlaySelected = useCallback(async () => {
-    if (!view || selectedCards.size === 0) return;
+    if (!view || view.phase === "finished" || selectedCards.size === 0) return;
 
     const cardIds = Array.from(selectedCards);
     const cards = cardIds
@@ -154,6 +184,7 @@ export function GameView({
 
   const handleColorChosen = useCallback(
     async (color: CardColor) => {
+      if (view?.phase === "finished") return;
       setShowColorPicker(false);
 
       if (!pendingAction) {
@@ -172,27 +203,30 @@ export function GameView({
 
       await submitSelectedPlay(pendingAction.cardIds, color);
     },
-    [gameAction, gameId, pendingAction, submitDrawDecision, submitSelectedPlay],
+    [gameAction, gameId, pendingAction, submitDrawDecision, submitSelectedPlay, view?.phase],
   );
 
   const handleDraw = useCallback(async () => {
+    if (view?.phase === "finished") return;
     await gameAction(gameId, JSON.stringify({ type: "drawCards" }));
     setSelectedCards(new Set());
     setUnoArmed(false);
-  }, [gameAction, gameId]);
+  }, [gameAction, gameId, view?.phase]);
 
   const handleUno = useCallback(async () => {
+    if (view?.phase === "finished") return;
     await gameAction(gameId, JSON.stringify({ type: "callUno" }));
-  }, [gameAction, gameId]);
+  }, [gameAction, gameId, view?.phase]);
 
   const handleCatchUno = useCallback(
     async (targetUserId: string) => {
+      if (view?.phase === "finished") return;
       await gameAction(
         gameId,
         JSON.stringify({ type: "catchUno", targetUserId }),
       );
     },
-    [gameAction, gameId],
+    [gameAction, gameId, view?.phase],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -201,11 +235,12 @@ export function GameView({
   }, []);
 
   const handleKeepDrawnCard = useCallback(async () => {
+    if (view?.phase === "finished") return;
     await submitDrawDecision("keep");
-  }, [submitDrawDecision]);
+  }, [submitDrawDecision, view?.phase]);
 
   const handlePlayDrawnCard = useCallback(async () => {
-    if (!pendingDrawDecisionCard) return;
+    if (!pendingDrawDecisionCard || view?.phase === "finished") return;
 
     const needsColor =
       pendingDrawDecisionCard.type === "wild" ||
@@ -222,7 +257,7 @@ export function GameView({
     }
 
     await submitDrawDecision("play");
-  }, [pendingDrawDecisionCard, submitDrawDecision]);
+  }, [pendingDrawDecisionCard, submitDrawDecision, view?.phase]);
 
   if (!view) {
     return (
@@ -232,7 +267,7 @@ export function GameView({
     );
   }
 
-  if (view.phase === "finished") {
+  if (view.phase === "finished" && showFinishedScreen) {
     const winner = view.turnOrder.find(
       (player) => player.userId === view.winner,
     );
@@ -367,6 +402,11 @@ export function GameView({
       </div>
 
       <div className="flex-1 flex items-center justify-center relative h-full">
+        {view.phase === "finished" && !showFinishedScreen && (
+          <div className="pointer-events-none absolute top-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-xs font-medium uppercase tracking-wider text-amber-200">
+            Round over
+          </div>
+        )}
         <PlayArea view={view} onDraw={handleDraw} isMyTurn={isMyTurn} onPlaySelected={handlePlaySelected} />
       </div>
 
