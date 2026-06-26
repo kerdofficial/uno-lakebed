@@ -3,9 +3,16 @@ import type { ActionTextPart, Card, CardColor } from "../gameTypes";
 export function cardLabel(card: Card): string {
   if (card.type === "wild") return "Wild";
   if (card.type === "wild4") return "+4";
+  if (card.type === "wildReverseDraw4") return "Wild Reverse +4";
+  if (card.type === "wildDraw6") return "Wild +6";
+  if (card.type === "wildDraw10") return "Wild +10";
+  if (card.type === "wildColorRoulette") return "Wild Color Roulette";
   if (card.type === "draw2") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} +2`;
+  if (card.type === "draw4") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} +4`;
   if (card.type === "skip") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} Skip`;
+  if (card.type === "skipAll") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} Skip All`;
   if (card.type === "reverse") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} Reverse`;
+  if (card.type === "discardAll") return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} Discard All`;
   return `${card.color?.charAt(0).toUpperCase() + card.color?.slice(1)} ${card.value}`;
 }
 

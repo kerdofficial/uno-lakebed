@@ -15,7 +15,18 @@ type ColorPickerProps = {
 };
 
 export function ColorPicker({ onChoose, triggerCard }: ColorPickerProps) {
-  const cardLabel = triggerCard?.type === "wild4" ? "+4" : "Wild";
+  const cardLabel =
+    triggerCard?.type === "wild4"
+      ? "+4"
+      : triggerCard?.type === "wildReverseDraw4"
+        ? "Reverse +4"
+        : triggerCard?.type === "wildDraw6"
+          ? "+6"
+          : triggerCard?.type === "wildDraw10"
+            ? "+10"
+            : triggerCard?.type === "wildColorRoulette"
+              ? "Color Roulette"
+              : "Wild";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">

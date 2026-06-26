@@ -56,8 +56,15 @@ export function cardDisplay(card: Card): string {
   if (card.type === "skip") return "\u{20E0}";
   if (card.type === "reverse") return "\u{21C4}";
   if (card.type === "draw2") return "+2";
+  if (card.type === "draw4") return "+4";
   if (card.type === "wild") return "W";
   if (card.type === "wild4") return "+4";
+  if (card.type === "skipAll") return "ALL";
+  if (card.type === "discardAll") return "DROP";
+  if (card.type === "wildReverseDraw4") return "REV +4";
+  if (card.type === "wildDraw6") return "+6";
+  if (card.type === "wildDraw10") return "+10";
+  if (card.type === "wildColorRoulette") return "CLR";
   return "?";
 }
 
@@ -66,8 +73,15 @@ export function cardDisplayLabel(card: Card): string {
   if (card.type === "skip") return "SKIP";
   if (card.type === "reverse") return "REV";
   if (card.type === "draw2") return "+2";
+  if (card.type === "draw4") return "+4";
   if (card.type === "wild") return "W";
   if (card.type === "wild4") return "+4";
+  if (card.type === "skipAll") return "ALL";
+  if (card.type === "discardAll") return "DROP";
+  if (card.type === "wildReverseDraw4") return "REV +4";
+  if (card.type === "wildDraw6") return "+6";
+  if (card.type === "wildDraw10") return "+10";
+  if (card.type === "wildColorRoulette") return "CLR";
   return "?";
 }
 

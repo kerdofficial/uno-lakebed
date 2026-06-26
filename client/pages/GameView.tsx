@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useAuth } from "lakebed/client";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerView } from "../../shared/gameTypes";
+import { cardNeedsColorChoice } from "../../shared/gameLogic/effects";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { ColorPicker } from "../components/game/ColorPicker";
+import { ColorRouletteRevealToast } from "../components/game/ColorRouletteRevealToast";
 import { Confetti } from "../components/game/Confetti";
 import { DrawDecisionModal } from "../components/game/DrawDecisionModal";
 import { GameControls } from "../components/game/GameControls";
@@ -10,6 +12,7 @@ import { HelperText } from "../components/game/HelperText";
 import { MyHand } from "../components/game/MyHand";
 import { OpponentBar } from "../components/game/OpponentBar";
 import { PlayArea } from "../components/game/PlayArea";
+import { SevenSwapTargetModal } from "../components/game/SevenSwapTargetModal";
 import { UnoSplash } from "../components/game/UnoSplash";
 
 type PlayerViewRecord = {
@@ -43,6 +46,7 @@ export function GameView({
   const [unoArmed, setUnoArmed] = useState(false);
   const [drawDecisionUnoArmed, setDrawDecisionUnoArmed] = useState(false);
   const [showFinishedScreen, setShowFinishedScreen] = useState(false);
+  const [showPublicEventId, setShowPublicEventId] = useState<string | null>(null);
 
   const viewRecord = allViews.find((entry) => entry.gameId === gameId);
   const view: PlayerView | null = viewRecord
@@ -73,6 +77,21 @@ export function GameView({
 
     return () => clearTimeout(timeout);
   }, [isFinished, view?.winner, view?.lastAction]);
+
+  useEffect(() => {
+    const eventId = view?.publicEvent?.id;
+    if (!eventId) {
+      setShowPublicEventId(null);
+      return;
+    }
+
+    setShowPublicEventId(eventId);
+    const timeout = setTimeout(() => {
+      setShowPublicEventId((current) => (current === eventId ? null : current));
+    }, 2200);
+
+    return () => clearTimeout(timeout);
+  }, [view?.publicEvent?.id]);
 
   useEffect(() => {
     if (!willHaveOneCardAfterSelectedPlay && unoArmed) {
@@ -163,9 +182,7 @@ export function GameView({
     const cards = cardIds
       .map((id) => view.myHand.find((card) => card.id === id))
       .filter(Boolean) as Card[];
-    const needsColor = cards.some(
-      (card) => card.type === "wild" || card.type === "wild4",
-    );
+    const needsColor = cards.some((card) => cardNeedsColorChoice(card));
 
     if (needsColor) {
       setPendingAction({
@@ -173,7 +190,7 @@ export function GameView({
         cardIds,
       });
       setTriggerCard(
-        cards.find((c) => c.type === "wild" || c.type === "wild4") || null,
+        cards.find((card) => cardNeedsColorChoice(card)) || null,
       );
       setShowColorPicker(true);
       return;
@@ -242,9 +259,7 @@ export function GameView({
   const handlePlayDrawnCard = useCallback(async () => {
     if (!pendingDrawDecisionCard || view?.phase === "finished") return;
 
-    const needsColor =
-      pendingDrawDecisionCard.type === "wild" ||
-      pendingDrawDecisionCard.type === "wild4";
+    const needsColor = cardNeedsColorChoice(pendingDrawDecisionCard);
 
     if (needsColor) {
       setPendingAction({
@@ -258,6 +273,17 @@ export function GameView({
 
     await submitDrawDecision("play");
   }, [pendingDrawDecisionCard, submitDrawDecision, view?.phase]);
+
+  const handleSevenSwapTarget = useCallback(
+    async (targetUserId: string) => {
+      if (view?.phase === "finished") return;
+      await gameAction(
+        gameId,
+        JSON.stringify({ type: "chooseSevenSwapTarget", targetUserId }),
+      );
+    },
+    [gameAction, gameId, view?.phase],
+  );
 
   if (!view) {
     return (
@@ -358,7 +384,7 @@ export function GameView({
 
   const colorPickerTrigger =
     mustChooseColor && !triggerCard
-      ? view.discardTop.type === "wild" || view.discardTop.type === "wild4"
+      ? cardNeedsColorChoice(view.discardTop)
         ? view.discardTop
         : null
       : triggerCard;
@@ -376,6 +402,15 @@ export function GameView({
         <ColorPicker
           onChoose={handleColorChosen}
           triggerCard={colorPickerTrigger}
+        />
+      )}
+      {showPublicEventId === view.publicEvent?.id && (
+        <ColorRouletteRevealToast view={view} />
+      )}
+      {view.pendingSevenSwapTargets.length > 0 && !showColorPicker && (
+        <SevenSwapTargetModal
+          targets={view.pendingSevenSwapTargets}
+          onChoose={handleSevenSwapTarget}
         />
       )}
       {pendingDrawDecisionCard && !showColorPicker && (
@@ -430,7 +465,7 @@ export function GameView({
           onToggleUnoArmed={() => setUnoArmed((current) => !current)}
           onPlaySelected={handlePlaySelected}
           onClearSelection={handleClearSelection}
-          colorPickerVisible={showColorPicker || mustChooseColor || pendingDrawDecisionCard}
+          colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard)}
         />
       </div>
     </div>

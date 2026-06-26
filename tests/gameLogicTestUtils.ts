@@ -3,6 +3,7 @@ import type {
   CardColor,
   CardType,
   GameAction,
+  GameMode,
   GameState,
 } from "../shared/gameTypes.ts";
 import { applyAction } from "../shared/gameLogic/actions.ts";
@@ -17,6 +18,7 @@ export function makeCard(
 }
 
 export function makeState(input: {
+  gameMode?: GameMode;
   turnOrder: string[];
   currentPlayerIndex?: number;
   topCard?: Card;
@@ -28,17 +30,21 @@ export function makeState(input: {
   pendingDrawTarget?: string | null;
   finishedPlayers?: string[];
   revivableFinishedPlayers?: string[];
+  eliminatedPlayers?: string[];
   placements?: string[];
   winner?: string | null;
   lastAction?: string | null;
   unoCallStatus?: Record<string, boolean>;
   pendingDrawDecision?: GameState["pendingDrawDecision"];
+  pendingSevenSwap?: GameState["pendingSevenSwap"];
+  publicEvent?: GameState["publicEvent"];
   direction?: 1 | -1;
 }): GameState {
   const topCard =
     input.topCard ?? makeCard("top-red-5", "number", "red", 5);
 
   return {
+    gameMode: input.gameMode ?? "regular",
     drawPile: input.drawPile ?? [
       makeCard("draw-1", "number", "red", 1),
       makeCard("draw-2", "number", "yellow", 2),
@@ -58,11 +64,14 @@ export function makeState(input: {
     pendingDrawTarget: input.pendingDrawTarget ?? null,
     finishedPlayers: input.finishedPlayers ?? [],
     revivableFinishedPlayers: input.revivableFinishedPlayers ?? [],
+    eliminatedPlayers: input.eliminatedPlayers ?? [],
     placements: input.placements ?? [],
     winner: input.winner ?? null,
     lastAction: input.lastAction ?? null,
     unoCallStatus: input.unoCallStatus ?? {},
     pendingDrawDecision: input.pendingDrawDecision ?? null,
+    pendingSevenSwap: input.pendingSevenSwap ?? null,
+    publicEvent: input.publicEvent ?? null,
   };
 }
 

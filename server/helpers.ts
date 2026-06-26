@@ -1,4 +1,5 @@
 import { computePlayerView } from "../shared/gameLogic";
+import { parseGameSettings } from "../shared/gameSettings";
 import type { GameState } from "../shared/gameTypes";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -32,6 +33,7 @@ export function normalizePlayerRecord(player: any) {
 export function normalizeGameRecord(game: any) {
   return {
     ...game,
+    settings: JSON.stringify(parseGameSettings(game.settings || "")),
     roundsPlayed: String(numberField(game.roundsPlayed)),
   };
 }

@@ -1,5 +1,21 @@
-import type { Card, CardColor, GameState } from "../gameTypes";
-import { createDeck, shuffleDeck } from "./deck";
+import { parseGameSettings } from "../gameSettings";
+import type { Card, CardColor, CardType, GameSettings, GameState } from "../gameTypes";
+import { createDeckForMode, shuffleDeck } from "./decks";
+import { getLastDrawType } from "./effects";
+
+export function normalizeGameState(state: GameState): GameState {
+  return {
+    ...state,
+    gameMode: state.gameMode || "regular",
+    eliminatedPlayers: state.eliminatedPlayers || [],
+    pendingSevenSwap: state.pendingSevenSwap || null,
+    publicEvent: state.publicEvent || null,
+    revivableFinishedPlayers: state.revivableFinishedPlayers || [],
+    placements: state.placements || (state.winner ? [state.winner] : []),
+    unoCallStatus: state.unoCallStatus || {},
+    pendingDrawDecision: state.pendingDrawDecision || null,
+  };
+}
 
 export function getRevivableFinishedPlayers(state: GameState): string[] {
   return state.revivableFinishedPlayers || [];
@@ -16,6 +32,7 @@ export function getNextPlayerIndex(
   skip = 0,
   includeRevivableFinished = false
 ): number {
+  state = normalizeGameState(state);
   const { turnOrder, direction, finishedPlayers } = state;
   const revivableFinishedPlayers = new Set(getRevivableFinishedPlayers(state));
   let index = fromIndex;
@@ -34,6 +51,7 @@ export function getNextPlayerIndex(
 }
 
 export function getActivePlayerIds(state: GameState): string[] {
+  state = normalizeGameState(state);
   return state.turnOrder.filter((playerId) => !state.finishedPlayers.includes(playerId));
 }
 
@@ -117,6 +135,7 @@ export function advanceTurn(
   skipCount = 0,
   expireRevivableFinishedPlayersOnAdvance = true
 ): GameState {
+  state = normalizeGameState(state);
   const currentPlayerIndex = getNextPlayerIndexAfterSkips(state, skipCount);
   return {
     ...state,
@@ -132,6 +151,7 @@ export function advanceTurn(
 }
 
 function rebuildDrawPile(state: GameState): Card[] {
+  state = normalizeGameState(state);
   const topDiscard = state.discardPile[state.discardPile.length - 1];
   const unavailableCardIds = new Set<string>();
 
@@ -143,10 +163,13 @@ function rebuildDrawPile(state: GameState): Card[] {
     }
   }
 
-  return shuffleDeck(createDeck().filter((card) => !unavailableCardIds.has(card.id)));
+  return shuffleDeck(
+    createDeckForMode(state.gameMode).filter((card) => !unavailableCardIds.has(card.id))
+  );
 }
 
 export function ensureDrawPile(state: GameState, needed: number): GameState {
+  state = normalizeGameState(state);
   if (state.drawPile.length >= needed) return state;
 
   const topDiscard = state.discardPile[state.discardPile.length - 1];
@@ -161,6 +184,7 @@ export function drawCards(
   state: GameState,
   count: number
 ): { state: GameState; drawn: Card[] } {
+  state = normalizeGameState(state);
   const nextState = ensureDrawPile(state, count);
   const available = Math.min(count, nextState.drawPile.length);
   const drawn = nextState.drawPile.slice(0, available);
@@ -171,19 +195,19 @@ export function drawCards(
   };
 }
 
-export function determineLastDrawType(discardPile: Card[]): "draw2" | "wild4" {
-  for (let index = discardPile.length - 1; index >= 0; index--) {
-    if (discardPile[index].type === "wild4") return "wild4";
-    if (discardPile[index].type === "draw2") return "draw2";
-  }
-  return "draw2";
+export function determineLastDrawType(
+  discardPile: Card[],
+  gameMode: GameState["gameMode"] = "regular"
+): CardType {
+  return getLastDrawType(discardPile, gameMode);
 }
 
 export function initializeGame(
   playerIds: string[],
-  _settings?: { maxPlayers?: number }
+  settingsInput?: Partial<GameSettings>
 ): GameState {
-  let deck = shuffleDeck(createDeck());
+  const settings = parseGameSettings(settingsInput || {});
+  let deck = shuffleDeck(createDeckForMode(settings.gameMode));
   const hands: Record<string, Card[]> = {};
 
   for (const playerId of playerIds) {
@@ -194,7 +218,7 @@ export function initializeGame(
   let firstCard = deck[0];
   deck = deck.slice(1);
 
-  for (let attempts = 0; firstCard.type !== "number" && attempts < 108; attempts++) {
+  for (let attempts = 0; firstCard.type !== "number" && attempts < deck.length + 1; attempts++) {
     deck = [...deck, firstCard];
     deck = shuffleDeck(deck);
     firstCard = deck[0];
@@ -206,6 +230,7 @@ export function initializeGame(
   }
 
   return {
+    gameMode: settings.gameMode,
     drawPile: deck,
     discardPile: [firstCard],
     hands,
@@ -218,10 +243,13 @@ export function initializeGame(
     pendingDrawTarget: null,
     finishedPlayers: [],
     revivableFinishedPlayers: [],
+    eliminatedPlayers: [],
     placements: [],
     winner: null,
     lastAction: null,
     unoCallStatus: {},
     pendingDrawDecision: null,
+    pendingSevenSwap: null,
+    publicEvent: null,
   };
 }

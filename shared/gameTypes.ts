@@ -1,12 +1,21 @@
 export type CardColor = "red" | "yellow" | "green" | "blue";
 
+export type GameMode = "regular" | "noMercy";
+
 export type CardType =
   | "number"
   | "skip"
   | "reverse"
   | "draw2"
+  | "draw4"
   | "wild"
-  | "wild4";
+  | "wild4"
+  | "skipAll"
+  | "discardAll"
+  | "wildReverseDraw4"
+  | "wildDraw6"
+  | "wildDraw10"
+  | "wildColorRoulette";
 
 export type Card = {
   id: string;
@@ -19,9 +28,22 @@ export type GamePhase =
   | "play"
   | "stacking"
   | "chooseColor"
+  | "chooseSevenSwapTarget"
   | "finished";
 
+export type PublicGameEvent =
+  | {
+      id: string;
+      type: "colorRouletteReveal";
+      actorId: string;
+      targetId: string;
+      chosenColor: CardColor;
+      revealedCard: Card | null;
+      drawnCount: number;
+    };
+
 export type GameState = {
+  gameMode: GameMode;
   drawPile: Card[];
   discardPile: Card[];
   hands: Record<string, Card[]>;
@@ -34,6 +56,7 @@ export type GameState = {
   pendingDrawTarget: string | null;
   finishedPlayers: string[];
   revivableFinishedPlayers: string[];
+  eliminatedPlayers: string[];
   placements: string[];
   winner: string | null;
   lastAction: string | null;
@@ -42,6 +65,11 @@ export type GameState = {
     playerId: string;
     cardId: string;
   } | null;
+  pendingSevenSwap: {
+    playerId: string;
+    cardIds: string[];
+  } | null;
+  publicEvent: PublicGameEvent | null;
 };
 
 export type PlayerInfo = {
@@ -60,6 +88,7 @@ export type ActionTextPart = {
 
 export type PlayerView = {
   gameId: string;
+  gameMode: GameMode;
   myHand: Card[];
   handCounts: Record<string, number>;
   discardTop: Card;
@@ -74,14 +103,18 @@ export type PlayerView = {
   playableCardIds: string[];
   canStack: boolean;
   stackableCardIds: string[];
+  selectableCardIds: string[];
   mustDraw: boolean;
   pendingDrawCount: number;
   unoCallable: boolean;
   unoCatchable: string[];
   drawPileCount: number;
   pendingDrawDecisionCard: Card | null;
+  pendingSevenSwapTargets: PlayerInfo[];
+  publicEvent: PublicGameEvent | null;
   winner: string | null;
   finishedPlayers: string[];
+  eliminatedPlayers: string[];
   placements: string[];
 };
 
@@ -124,6 +157,11 @@ export type ResolveDrawDecisionAction = {
   callUno?: boolean;
 };
 
+export type ChooseSevenSwapTargetAction = {
+  type: "chooseSevenSwapTarget";
+  targetUserId: string;
+};
+
 export type GameAction =
   | PlayCardsAction
   | StackCardsAction
@@ -131,10 +169,12 @@ export type GameAction =
   | ChooseColorAction
   | CallUnoAction
   | CatchUnoAction
-  | ResolveDrawDecisionAction;
+  | ResolveDrawDecisionAction
+  | ChooseSevenSwapTargetAction;
 
 export type GameSettings = {
   maxPlayers: number;
+  gameMode: GameMode;
 };
 
 export type GameStatus = "lobby" | "playing" | "finished" | "closed";
@@ -144,6 +184,7 @@ export type GameInfo = {
   code: string;
   hostId: string;
   status: GameStatus;
+  settings: string;
   winnerId: string;
   roundsPlayed: string;
   createdAt: string;

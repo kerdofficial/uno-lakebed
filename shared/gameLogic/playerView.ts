@@ -1,6 +1,7 @@
 import type { GameAction, GameState, PlayerInfo, PlayerView } from "../gameTypes";
 import { actionWithDisplayNames, buildActionParts } from "./descriptions";
-import { determineLastDrawType } from "./state";
+import { normalizeGameState } from "./state";
+import { canStackCard, cardNeedsColorChoice, getDrawAmount, getLastDrawCard, isDrawCard } from "./effects";
 import { getPlayableCards, getStackableCards } from "./rules";
 
 export function computePlayerView(
@@ -9,6 +10,7 @@ export function computePlayerView(
   gameId: string,
   players: { userId: string; displayName: string; picture: string }[]
 ): PlayerView {
+  state = normalizeGameState(state);
   const myHand = state.hands[userId] || [];
   const discardTop = state.discardPile[state.discardPile.length - 1];
   const handCounts: Record<string, number> = {};
@@ -27,7 +29,7 @@ export function computePlayerView(
   const hasPendingDrawDecision = !!pendingDrawDecisionCard;
   const canPlay = isMyTurn && state.phase === "play" && !hasPendingDrawDecision;
   const playableCardIds = canPlay
-    ? getPlayableCards(myHand, discardTop, state.currentColor).map((card) => card.id)
+    ? getPlayableCards(myHand, discardTop, state.currentColor, state.gameMode).map((card) => card.id)
     : [];
 
   const canStack =
@@ -35,7 +37,7 @@ export function computePlayerView(
     state.pendingDrawTarget === userId &&
     !hasPendingDrawDecision;
   const stackableCardIds = canStack
-    ? getStackableCards(myHand, determineLastDrawType(state.discardPile)).map((card) => card.id)
+    ? getStackableCards(myHand, state.discardPile, state.gameMode).map((card) => card.id)
     : [];
 
   const mustDraw =
@@ -60,9 +62,25 @@ export function computePlayerView(
   });
 
   const lastAction = actionWithDisplayNames(state.lastAction, players);
+  const pendingSevenSwapTargets =
+    state.phase === "chooseSevenSwapTarget" && state.pendingSevenSwap?.playerId === userId
+      ? state.turnOrder
+          .filter((playerId) => playerId !== userId && !state.finishedPlayers.includes(playerId))
+          .map((playerId) => {
+            const player = players.find((entry) => entry.userId === playerId);
+            return {
+              userId: playerId,
+              displayName: player?.displayName || "Unknown",
+              picture: player?.picture || "",
+              cardCount: (state.hands[playerId] || []).length,
+              calledUno: !!state.unoCallStatus[playerId],
+            };
+          })
+      : [];
 
   return {
     gameId,
+    gameMode: state.gameMode,
     myHand,
     handCounts,
     discardTop,
@@ -77,16 +95,85 @@ export function computePlayerView(
     playableCardIds,
     canStack,
     stackableCardIds,
+    selectableCardIds: [...playableCardIds, ...stackableCardIds],
     mustDraw,
     pendingDrawCount: state.pendingDrawStack,
     unoCallable,
     unoCatchable,
     drawPileCount: state.drawPile.length,
     pendingDrawDecisionCard,
+    pendingSevenSwapTargets,
+    publicEvent: state.publicEvent,
     winner: state.winner,
     finishedPlayers: state.finishedPlayers,
+    eliminatedPlayers: state.eliminatedPlayers,
     placements: state.placements || (state.winner ? [state.winner] : []),
   };
+}
+
+function validatePlayCards(
+  state: GameState,
+  playerId: string,
+  cardIds: string[],
+  chosenColor?: string
+): { valid: boolean; error?: string } {
+  const hand = state.hands[playerId];
+  for (const cardId of cardIds) {
+    if (!hand.find((card) => card.id === cardId)) {
+      return { valid: false, error: `Card ${cardId} not in hand` };
+    }
+  }
+
+  const cards = cardIds.map((cardId) => hand.find((card) => card.id === cardId)!);
+  const topDiscard = state.discardPile[state.discardPile.length - 1];
+  const firstCard = cards[0];
+  const sameType = new Set(cards.map((card) => card.type));
+
+  if (cards.length === 1) {
+    if (!getPlayableCards([firstCard], topDiscard, state.currentColor, state.gameMode).length) {
+      return { valid: false, error: "Card not playable" };
+    }
+  } else {
+    if (!getPlayableCards([firstCard], topDiscard, state.currentColor, state.gameMode).length) {
+      return { valid: false, error: "First card must be playable" };
+    }
+    if (sameType.size > 1) {
+      return { valid: false, error: "Multi-play cards must be same type" };
+    }
+    if (firstCard.type === "number") {
+      const sameValue = new Set(cards.map((card) => card.value));
+      if (sameValue.size > 1) {
+        return {
+          valid: false,
+          error: "Multi-play number cards must have same value",
+        };
+      }
+    } else if (firstCard.type !== "skip" && firstCard.type !== "reverse") {
+      return {
+        valid: false,
+        error: "Can only multi-play numbers, skips, or reverses",
+      };
+    }
+  }
+
+  if (state.gameMode === "noMercy") {
+    if (cards.length > 1 && cards.some((card) => isDrawCard(card, state.gameMode))) {
+      return { valid: false, error: "Draw cards can only be multi-played while stacking" };
+    }
+    if (cards.length > 1 && cards.some((card) => cardNeedsColorChoice(card))) {
+      return { valid: false, error: "Wild cards cannot be multi-played" };
+    }
+    if (cards.length > 1 && cards.some((card) => card.type === "discardAll")) {
+      return { valid: false, error: "Discard All cannot be multi-played" };
+    }
+  }
+
+  const needsColor = cards.some((card) => cardNeedsColorChoice(card));
+  if (needsColor && !chosenColor) {
+    return { valid: false, error: "Must choose color for wild card" };
+  }
+
+  return { valid: true };
 }
 
 export function validateAction(
@@ -94,8 +181,22 @@ export function validateAction(
   playerId: string,
   action: GameAction
 ): { valid: boolean; error?: string } {
+  state = normalizeGameState(state);
   const currentPlayerId = state.turnOrder[state.currentPlayerIndex];
   const pendingDrawDecision = state.pendingDrawDecision;
+
+  if (state.eliminatedPlayers.includes(playerId)) {
+    return { valid: false, error: "You are out of this round" };
+  }
+
+  if (state.pendingSevenSwap) {
+    if (action.type !== "chooseSevenSwapTarget") {
+      return { valid: false, error: "Choose a hand swap target first" };
+    }
+    if (state.pendingSevenSwap.playerId !== playerId) {
+      return { valid: false, error: "Not your hand swap choice" };
+    }
+  }
 
   if (pendingDrawDecision) {
     if (action.type !== "resolveDrawDecision") {
@@ -111,52 +212,7 @@ export function validateAction(
       if (currentPlayerId !== playerId) return { valid: false, error: "Not your turn" };
       if (state.phase !== "play") return { valid: false, error: "Cannot play cards now" };
       if (action.cardIds.length === 0) return { valid: false, error: "No cards selected" };
-
-      const hand = state.hands[playerId];
-      for (const cardId of action.cardIds) {
-        if (!hand.find((card) => card.id === cardId)) {
-          return { valid: false, error: `Card ${cardId} not in hand` };
-        }
-      }
-
-      const cards = action.cardIds.map((cardId) => hand.find((card) => card.id === cardId)!);
-      const topDiscard = state.discardPile[state.discardPile.length - 1];
-      const firstCard = cards[0];
-      const sameType = new Set(cards.map((card) => card.type));
-
-      if (cards.length === 1) {
-        if (!getPlayableCards([firstCard], topDiscard, state.currentColor).length) {
-          return { valid: false, error: "Card not playable" };
-        }
-      } else {
-        if (!getPlayableCards([firstCard], topDiscard, state.currentColor).length) {
-          return { valid: false, error: "First card must be playable" };
-        }
-        if (sameType.size > 1) {
-          return { valid: false, error: "Multi-play cards must be same type" };
-        }
-        if (firstCard.type === "number") {
-          const sameValue = new Set(cards.map((card) => card.value));
-          if (sameValue.size > 1) {
-            return {
-              valid: false,
-              error: "Multi-play number cards must have same value",
-            };
-          }
-        } else if (firstCard.type !== "skip" && firstCard.type !== "reverse") {
-          return {
-            valid: false,
-            error: "Can only multi-play numbers, skips, or reverses",
-          };
-        }
-      }
-
-      const needsColor = cards.some((card) => card.type === "wild" || card.type === "wild4");
-      if (needsColor && !action.chosenColor) {
-        return { valid: false, error: "Must choose color for wild card" };
-      }
-
-      return { valid: true };
+      return validatePlayCards(state, playerId, action.cardIds, action.chosenColor);
     }
 
     case "stackCards": {
@@ -174,16 +230,21 @@ export function validateAction(
       }
 
       const cards = action.cardIds.map((cardId) => hand.find((card) => card.id === cardId)!);
-      const lastDrawType = determineLastDrawType(state.discardPile);
+      const lastDrawCard = getLastDrawCard(state.discardPile, state.gameMode);
 
+      let requiredDrawAmount = getDrawAmount(lastDrawCard || cards[0]);
       for (const card of cards) {
-        if (lastDrawType === "draw2") {
-          if (card.type !== "draw2" && card.type !== "wild4") {
-            return { valid: false, error: "Can only stack +2 or +4 on +2" };
-          }
-        } else if (card.type !== "wild4") {
-          return { valid: false, error: "Can only stack +4 on +4" };
+        if (!canStackCard(card, lastDrawCard, state.gameMode)) {
+          return { valid: false, error: "Cannot stack that draw card" };
         }
+        if (state.gameMode === "noMercy" && getDrawAmount(card) < requiredDrawAmount) {
+          return { valid: false, error: "Stacked draw card must be equal or higher" };
+        }
+        requiredDrawAmount = getDrawAmount(card);
+      }
+
+      if (cards.some((card) => cardNeedsColorChoice(card)) && !action.chosenColor) {
+        return { valid: false, error: "Must choose color for wild card" };
       }
 
       return { valid: true };
@@ -203,7 +264,7 @@ export function validateAction(
       if (currentPlayerId !== playerId) return { valid: false, error: "Not your turn" };
 
       const topCard = state.discardPile[state.discardPile.length - 1];
-      if (topCard.type !== "wild" && topCard.type !== "wild4") {
+      if (!cardNeedsColorChoice(topCard)) {
         return { valid: false, error: "Top card is not wild" };
       }
 
@@ -245,14 +306,30 @@ export function validateAction(
       }
 
       const topDiscard = state.discardPile[state.discardPile.length - 1];
-      if (!getPlayableCards([drawnCard], topDiscard, state.currentColor).length) {
+      if (!getPlayableCards([drawnCard], topDiscard, state.currentColor, state.gameMode).length) {
         return { valid: false, error: "Drawn card is not playable" };
       }
 
-      if ((drawnCard.type === "wild" || drawnCard.type === "wild4") && !action.chosenColor) {
+      if (cardNeedsColorChoice(drawnCard) && !action.chosenColor) {
         return { valid: false, error: "Must choose color for wild card" };
       }
 
+      return { valid: true };
+    }
+
+    case "chooseSevenSwapTarget": {
+      if (state.phase !== "chooseSevenSwapTarget" || !state.pendingSevenSwap) {
+        return { valid: false, error: "No hand swap target needed" };
+      }
+      if (state.pendingSevenSwap.playerId !== playerId) {
+        return { valid: false, error: "Not your hand swap choice" };
+      }
+      if (action.targetUserId === playerId) {
+        return { valid: false, error: "Choose another player" };
+      }
+      if (state.finishedPlayers.includes(action.targetUserId)) {
+        return { valid: false, error: "Target is not active" };
+      }
       return { valid: true };
     }
   }

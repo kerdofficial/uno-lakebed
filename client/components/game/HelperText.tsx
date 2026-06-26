@@ -23,7 +23,10 @@ export function HelperText({ view, isMyTurn, hasSelectedCards }: HelperTextProps
       text = "No playable cards - draw from the pile!";
     }
   } else if (view.canStack && view.stackableCardIds.length > 0) {
-    text = `Stack a +2/+4, or draw ${view.pendingDrawCount} cards`;
+    text =
+      view.gameMode === "noMercy"
+        ? `Stack an equal or higher draw card, or draw ${view.pendingDrawCount}`
+        : `Stack a +2/+4, or draw ${view.pendingDrawCount} cards`;
   } else if (view.mustDraw && view.phase === "stacking") {
     text = `You must draw ${view.pendingDrawCount} cards`;
   } else if (!isMyTurn && view.phase !== "finished") {

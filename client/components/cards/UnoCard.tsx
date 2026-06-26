@@ -1,4 +1,6 @@
 import type { Card } from "../../../shared/gameTypes";
+import { isWildCard } from "../../../shared/gameLogic/effects";
+import { NoMercyCardArt, NO_MERCY_ART_TYPES } from "./NoMercyCardArt";
 import {
   CARD_BORDER_COLORS,
   CARD_GRADIENT_STYLES,
@@ -66,8 +68,15 @@ export function UnoCard({
     );
   }
 
-  const isWild = card.type === "wild" || card.type === "wild4";
+  const isWild = isWildCard(card);
+  const isNoMercyWild =
+    card.type === "wildReverseDraw4" ||
+    card.type === "wildDraw6" ||
+    card.type === "wildDraw10" ||
+    card.type === "wildColorRoulette";
+  const hasArt = NO_MERCY_ART_TYPES.has(card.type);
   const display = cardDisplay(card);
+  const cornerLabel = card.type === "wildReverseDraw4" ? "+4" : display;
   const textColor = isWild ? "text-white" : CARD_TEXT_COLORS[card.color!] || "text-white";
 
   const borderClass = selected
@@ -104,8 +113,18 @@ export function UnoCard({
       : "";
 
   const bgStyle: Record<string, string> = isWild
-    ? { background: WILD_GRADIENT }
+    ? {
+        background: isNoMercyWild
+          ? "radial-gradient(circle at 50% 45%, #262626 0%, #111827 44%, #030712 100%)"
+          : WILD_GRADIENT,
+      }
     : CARD_GRADIENT_STYLES[card.color!] || {};
+  const centerTextClass =
+    display.length > 3
+      ? size === "small"
+        ? "text-[7px]"
+        : "text-[11px] md:text-sm"
+      : sizeConfig.centerText;
 
   return (
     <div
@@ -113,7 +132,14 @@ export function UnoCard({
       className={`${sizeConfig.container} relative flex-shrink-0 rounded-lg border-2 ${borderClass} flex items-center justify-center cursor-pointer transition-all duration-200 ${transform} ${dimClass} select-none overflow-hidden`}
       style={{ ...bgStyle, ...glowStyle, ...animationStyle }}
     >
-      {isWild ? (
+      {hasArt ? (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ padding: size === "small" ? "2px" : "5px" }}
+        >
+          <NoMercyCardArt card={card} />
+        </div>
+      ) : isWild ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             className="flex items-center justify-center bg-white rounded-full shadow-md aspect-square!"
@@ -122,7 +148,7 @@ export function UnoCard({
               height: size === "small" ? "18px" : "40%",
             }}
           >
-            <span className={`font-black ${sizeConfig.centerText} ${card.type === "wild4" ? "text-neutral-900" : "text-neutral-800"}`}>
+            <span className={`font-black ${centerTextClass} ${card.type === "wild4" ? "text-neutral-900" : "text-neutral-800"}`}>
               {display}
             </span>
           </div>
@@ -137,17 +163,17 @@ export function UnoCard({
               transform: "rotate(20deg)",
             }}
           />
-          <span className={`relative z-10 font-black ${sizeConfig.centerText} ${textColor} drop-shadow-sm`}>
+          <span className={`relative z-10 font-black ${centerTextClass} ${textColor} drop-shadow-sm`}>
             {display}
           </span>
         </>
       )}
 
       <span className={`absolute top-0.5 left-1 ${sizeConfig.cornerText} font-bold text-white drop-shadow-md z-10`}>
-        {display}
+        {cornerLabel}
       </span>
       <span className={`absolute bottom-0.5 right-1 ${sizeConfig.cornerText} font-bold text-white drop-shadow-md z-10 rotate-180`}>
-        {display}
+        {cornerLabel}
       </span>
 
       {isWild && (

@@ -1,6 +1,7 @@
 import { navigate, useAuth, useMutation } from "lakebed/client";
 import { useEffect, useState } from "preact/hooks";
-import type { GameInfo, PlayerRecord } from "../../shared/gameTypes";
+import { GAME_MODE_LABELS, parseGameSettings } from "../../shared/gameSettings";
+import type { GameInfo, GameMode, PlayerRecord } from "../../shared/gameTypes";
 
 type LobbyViewProps = {
   game: GameInfo & { players: PlayerRecord[] };
@@ -14,6 +15,8 @@ const SEAT_COLORS = [
   "bg-amber-600/20 text-amber-400 border-amber-500/20",
 ];
 
+const GAME_MODE_OPTIONS: GameMode[] = ["regular", "noMercy"];
+
 export function LobbyView({ game, players }: LobbyViewProps) {
   const auth = useAuth();
   const toggleReady = useMutation<[gameId: string], void>("toggleReady");
@@ -22,6 +25,8 @@ export function LobbyView({ game, players }: LobbyViewProps) {
   const closeRoom = useMutation<[gameId: string], void>("closeRoom");
   const kickPlayer = useMutation<[gameId: string, targetUserId: string], void>("kickPlayer");
   const updateDisplayName = useMutation<[gameId: string, displayName: string], void>("updateDisplayName");
+  const updateGameSettings = useMutation<[gameId: string, settingsJson: string], void>("updateGameSettings");
+  const settings = parseGameSettings(game.settings);
 
   const isHost = game.hostId === auth.userId;
   const myPlayer = players.find((player) => player.userId === auth.userId);
@@ -43,6 +48,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
   const [displayName, setDisplayName] = useState(myPlayer?.displayName || "");
   const [nameError, setNameError] = useState("");
   const [copied, setCopied] = useState(false);
+  const canEditSettings = isHost && (game.status === "lobby" || game.status === "finished");
 
   useEffect(() => {
     setDisplayName(myPlayer?.displayName || "");
@@ -72,6 +78,11 @@ export function LobbyView({ game, players }: LobbyViewProps) {
   const handleLeave = async () => {
     await leaveGame(game.id);
     navigate("/");
+  };
+
+  const handleModeChange = async (gameMode: GameMode) => {
+    if (!canEditSettings || gameMode === settings.gameMode) return;
+    await updateGameSettings(game.id, JSON.stringify({ ...settings, gameMode }));
   };
 
   return (
@@ -116,6 +127,42 @@ export function LobbyView({ game, players }: LobbyViewProps) {
 
       <div className="w-full max-w-sm space-y-4">
 
+        <div
+          className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
+          style={{ animation: "fade-slide-in 0.3s ease-out 0.15s both" }}
+        >
+          <div className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-neutral-500">
+            Game mode
+          </div>
+          {isHost ? (
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-neutral-950 p-1">
+              {GAME_MODE_OPTIONS.map((gameMode) => {
+                const selected = settings.gameMode === gameMode;
+                return (
+                  <button
+                    key={gameMode}
+                    onClick={() => handleModeChange(gameMode)}
+                    disabled={!canEditSettings}
+                    className={`rounded-lg px-3 py-2.5 text-xs font-black transition-all cursor-pointer disabled:cursor-not-allowed ${
+                      selected
+                        ? gameMode === "noMercy"
+                          ? "bg-red-600 text-white shadow-lg shadow-red-600/25"
+                          : "bg-white text-black"
+                        : "text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                    }`}
+                  >
+                    {GAME_MODE_LABELS[gameMode]}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-center text-sm font-bold text-white">
+              {GAME_MODE_LABELS[settings.gameMode]}
+            </div>
+          )}
+        </div>
+
         {myPlayer && (
           <div
             className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4"
@@ -151,7 +198,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
           style={{ animation: "fade-slide-in 0.3s ease-out 0.1s both" }}
         >
           <div className="text-neutral-500 text-xs mb-3 text-center font-medium uppercase tracking-wider">
-            Players ({players.length}/4)
+            Players ({players.length}/{settings.maxPlayers})
           </div>
           <div className="space-y-2">
             {players.map((player, index) => {
@@ -226,9 +273,9 @@ export function LobbyView({ game, players }: LobbyViewProps) {
               );
             })}
 
-            {players.length < 4 && (
+            {players.length < settings.maxPlayers && (
               <div className="flex items-center justify-center py-3 border border-dashed border-neutral-700 rounded-xl text-neutral-600 text-xs">
-                {4 - players.length} spot{4 - players.length !== 1 ? "s" : ""} available
+                {settings.maxPlayers - players.length} spot{settings.maxPlayers - players.length !== 1 ? "s" : ""} available
               </div>
             )}
           </div>

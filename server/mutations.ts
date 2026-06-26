@@ -1,5 +1,6 @@
 import { mutation } from "lakebed/server";
 import { applyAction, initializeGame } from "../shared/gameLogic";
+import { parseGameSettings, serializeGameSettings } from "../shared/gameSettings";
 import type { GameAction, GameState } from "../shared/gameTypes";
 import {
   findPlayerInGame,
@@ -18,7 +19,7 @@ export const mutations = {
       hostId: ctx.auth.userId,
       status: "lobby",
       state: "",
-      settings: JSON.stringify({ maxPlayers: 4 }),
+      settings: serializeGameSettings({ maxPlayers: 4, gameMode: "regular" }),
       winnerId: "",
       roundsPlayed: "0",
     });
@@ -50,7 +51,7 @@ export const mutations = {
     if (existing) return { gameId: game.id };
 
     const currentPlayers = ctx.db.players.where("gameId", game.id).all();
-    const settings = JSON.parse(game.settings || '{"maxPlayers":4}');
+    const settings = parseGameSettings(game.settings);
     if (currentPlayers.length >= settings.maxPlayers) {
       throw new Error("Game is full");
     }
@@ -74,6 +75,20 @@ export const mutations = {
     ctx.db.players.update(player.id, { isReady: !player.isReady });
   }),
 
+  updateGameSettings: mutation((ctx, gameId: string, settingsJson: string) => {
+    const game = ctx.db.games.get(gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.hostId !== ctx.auth.userId) throw new Error("Only host can update settings");
+    if (game.status !== "lobby" && game.status !== "finished") {
+      throw new Error("Cannot update settings during a game");
+    }
+
+    const settings = parseGameSettings(settingsJson);
+    ctx.db.games.update(gameId, {
+      settings: JSON.stringify(settings),
+    });
+  }),
+
   startGame: mutation((ctx, gameId: string) => {
     const game = ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
@@ -87,7 +102,8 @@ export const mutations = {
     const players = ctx.db.players.where("gameId", gameId).orderBy("seatIndex", "asc").all();
     if (players.length < 2) throw new Error("Need at least 2 players");
 
-    const gameState = initializeGame(players.map((player: any) => player.userId));
+    const settings = parseGameSettings(game.settings);
+    const gameState = initializeGame(players.map((player: any) => player.userId), settings);
     ctx.db.games.update(gameId, {
       status: "playing",
       state: JSON.stringify(gameState),
