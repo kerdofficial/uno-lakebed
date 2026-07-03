@@ -14,7 +14,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="min-h-[85vh] h-[85vh] bg-neutral-950 text-white">
+    <div className="min-h-[85vh] h-[85vh] bg-neutral-950 text-white overflow-visible">
       <AnimationStyles />
       {!auth.isGuest && !auth.isLoading && (
         <div className="absolute top-4 right-4 z-10">
