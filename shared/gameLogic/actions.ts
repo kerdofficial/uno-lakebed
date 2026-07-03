@@ -63,6 +63,7 @@ function markPlayerFinished(state: GameState, playerId: string): GameState {
 function markPlayerEliminated(state: GameState, playerId: string): GameState {
   state = normalizeGameState(state);
   if (state.eliminatedPlayers.includes(playerId)) return state;
+  const remainingPlacements = getPlacements(state).filter((id) => id !== playerId);
 
   return {
     ...state,
@@ -72,15 +73,19 @@ function markPlayerEliminated(state: GameState, playerId: string): GameState {
       : [...state.finishedPlayers, playerId],
     revivableFinishedPlayers: getRevivableFinishedPlayers(state).filter((id) => id !== playerId),
     eliminatedPlayers: [...state.eliminatedPlayers, playerId],
-    placements: getPlacements(state).filter((id) => id !== playerId),
-    winner: getPlacements(state).filter((id) => id !== playerId)[0] || null,
+    placements: remainingPlacements,
+    winner: remainingPlacements[0] || null,
   };
 }
 
 function normalizePlacementState(state: GameState): GameState {
   state = normalizeGameState(state);
   const validFinishedPlayers = new Set(state.finishedPlayers);
-  const placements = getPlacements(state).filter((playerId) => validFinishedPlayers.has(playerId));
+  const eliminatedPlayers =
+    state.gameMode === "noMercy" ? new Set(state.eliminatedPlayers) : new Set<string>();
+  const placements = getPlacements(state).filter(
+    (playerId) => validFinishedPlayers.has(playerId) && !eliminatedPlayers.has(playerId)
+  );
   const winner = placements[0] || null;
 
   if (placements.length === getPlacements(state).length && winner === state.winner) {
@@ -113,10 +118,19 @@ function appendNoMercyFinalPlacements(state: GameState): GameState {
   if (state.gameMode !== "noMercy") return state;
 
   const activePlayerIds = getActivePlayerIds(state);
-  if (activePlayerIds.length > 1 || getRevivableFinishedPlayers(state).length > 0) return state;
+  const revivableFinishedPlayers = getRevivableFinishedPlayers(state);
+  if (activePlayerIds.length > 1) return state;
+  if (activePlayerIds.length === 1 && revivableFinishedPlayers.length > 0) return state;
 
-  let nextState = state;
-  const placements = [...getPlacements(nextState)];
+  let nextState =
+    activePlayerIds.length === 0 && revivableFinishedPlayers.length > 0
+      ? { ...state, revivableFinishedPlayers: [] }
+      : state;
+  const eliminatedPlayers = new Set(nextState.eliminatedPlayers);
+  const finishedPlayers = new Set(nextState.finishedPlayers);
+  const placements = getPlacements(nextState).filter(
+    (playerId) => finishedPlayers.has(playerId) && !eliminatedPlayers.has(playerId)
+  );
 
   for (const playerId of activePlayerIds) {
     if (!nextState.finishedPlayers.includes(playerId)) {
@@ -135,7 +149,7 @@ function appendNoMercyFinalPlacements(state: GameState): GameState {
   return {
     ...nextState,
     placements,
-    winner: placements[0] || nextState.winner,
+    winner: placements[0] || null,
   };
 }
 
@@ -370,7 +384,8 @@ export function applyCards(
   playerId: string,
   cardIds: string[],
   chosenColor?: CardColor,
-  callUno = false
+  callUno = false,
+  sevenSwapTargetUserId?: string
 ): GameState {
   state = normalizeGameState(state);
   const { hand, playedCards } = removePlayedCards(state.hands[playerId], cardIds);
@@ -448,11 +463,33 @@ export function applyCards(
 
   if (nextState.gameMode === "noMercy" && zeroParity === "odd") {
     nextState = passHands(nextState);
+    nextState = {
+      ...nextState,
+      publicEvent: {
+        id: makePublicEventId(nextState, "hands-passed"),
+        type: "handsPassed",
+        actorId: playerId,
+      },
+    };
   }
 
   if (nextState.gameMode === "noMercy" && sevenParity === "odd") {
     const targets = getSevenSwapTargets(nextState, playerId);
-    if (targets.length > 1) {
+    if (sevenSwapTargetUserId) {
+      if (!targets.includes(sevenSwapTargetUserId)) {
+        throw new Error("Invalid hand swap target");
+      }
+      nextState = swapHands(nextState, playerId, sevenSwapTargetUserId);
+      nextState = {
+        ...nextState,
+        publicEvent: {
+          id: makePublicEventId(nextState, "hands-swapped"),
+          type: "handsSwapped",
+          actorId: playerId,
+          targetId: sevenSwapTargetUserId,
+        },
+      };
+    } else if (targets.length > 1) {
       return {
         ...nextState,
         phase: "chooseSevenSwapTarget",
@@ -462,9 +499,17 @@ export function applyCards(
         },
         lastAction,
       };
-    }
-    if (targets.length === 1) {
+    } else if (targets.length === 1) {
       nextState = swapHands(nextState, playerId, targets[0]);
+      nextState = {
+        ...nextState,
+        publicEvent: {
+          id: makePublicEventId(nextState, "hands-swapped"),
+          type: "handsSwapped",
+          actorId: playerId,
+          targetId: targets[0],
+        },
+      };
     }
   }
 
@@ -649,7 +694,12 @@ function applySevenSwapTarget(
     ...nextState,
     pendingSevenSwap: null,
     phase: "play",
-    publicEvent: null,
+    publicEvent: {
+      id: makePublicEventId(nextState, "hands-swapped"),
+      type: "handsSwapped",
+      actorId: playerId,
+      targetId: targetUserId,
+    },
   };
   nextState = applyPostPlayHandRules(nextState, playerId);
   return advanceAndFinish(nextState, 0, `${playerId} swapped hands with ${targetUserId}`);
@@ -671,7 +721,8 @@ export function applyAction(
         playerId,
         action.cardIds,
         action.chosenColor,
-        !!action.callUno
+        !!action.callUno,
+        action.sevenSwapTargetUserId
       );
     case "stackCards":
       return applyStack(

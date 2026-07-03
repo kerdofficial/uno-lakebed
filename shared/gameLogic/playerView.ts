@@ -1,7 +1,14 @@
-import type { GameAction, GameState, PlayerInfo, PlayerView } from "../gameTypes";
+import type { Card, GameAction, GameState, PlayerInfo, PlayerView } from "../gameTypes";
 import { actionWithDisplayNames, buildActionParts } from "./descriptions";
 import { normalizeGameState } from "./state";
-import { canStackCard, cardNeedsColorChoice, getDrawAmount, getLastDrawCard, isDrawCard } from "./effects";
+import {
+  canStackCard,
+  cardNeedsColorChoice,
+  getDrawAmount,
+  getLastDrawCard,
+  getNumberParity,
+  isDrawCard,
+} from "./effects";
 import { getPlayableCards, getStackableCards } from "./rules";
 
 export function computePlayerView(
@@ -77,6 +84,19 @@ export function computePlayerView(
             };
           })
       : [];
+  const revivableFinishedPlayers = new Set(state.revivableFinishedPlayers);
+  const canInspectHands =
+    (state.finishedPlayers.includes(userId) || state.eliminatedPlayers.includes(userId)) &&
+    !revivableFinishedPlayers.has(userId);
+  const spectatorHands: Record<string, Card[]> = {};
+
+  if (canInspectHands) {
+    for (const playerId of state.turnOrder) {
+      if (playerId === userId) continue;
+      if (state.phase !== "finished" && state.finishedPlayers.includes(playerId)) continue;
+      spectatorHands[playerId] = state.hands[playerId] || [];
+    }
+  }
 
   return {
     gameId,
@@ -103,6 +123,7 @@ export function computePlayerView(
     drawPileCount: state.drawPile.length,
     pendingDrawDecisionCard,
     pendingSevenSwapTargets,
+    spectatorHands,
     publicEvent: state.publicEvent,
     winner: state.winner,
     finishedPlayers: state.finishedPlayers,
@@ -115,7 +136,8 @@ function validatePlayCards(
   state: GameState,
   playerId: string,
   cardIds: string[],
-  chosenColor?: string
+  chosenColor?: string,
+  sevenSwapTargetUserId?: string
 ): { valid: boolean; error?: string } {
   const hand = state.hands[playerId];
   for (const cardId of cardIds) {
@@ -173,6 +195,21 @@ function validatePlayCards(
     return { valid: false, error: "Must choose color for wild card" };
   }
 
+  if (sevenSwapTargetUserId) {
+    if (state.gameMode !== "noMercy" || getNumberParity(cards, 7) !== "odd") {
+      return { valid: false, error: "Hand swap target is only valid for a no mercy 7" };
+    }
+    if (sevenSwapTargetUserId === playerId) {
+      return { valid: false, error: "Choose another player" };
+    }
+    if (!state.turnOrder.includes(sevenSwapTargetUserId)) {
+      return { valid: false, error: "Target is not in this game" };
+    }
+    if (state.finishedPlayers.includes(sevenSwapTargetUserId)) {
+      return { valid: false, error: "Target is not active" };
+    }
+  }
+
   return { valid: true };
 }
 
@@ -212,7 +249,13 @@ export function validateAction(
       if (currentPlayerId !== playerId) return { valid: false, error: "Not your turn" };
       if (state.phase !== "play") return { valid: false, error: "Cannot play cards now" };
       if (action.cardIds.length === 0) return { valid: false, error: "No cards selected" };
-      return validatePlayCards(state, playerId, action.cardIds, action.chosenColor);
+      return validatePlayCards(
+        state,
+        playerId,
+        action.cardIds,
+        action.chosenColor,
+        action.sevenSwapTargetUserId
+      );
     }
 
     case "stackCards": {

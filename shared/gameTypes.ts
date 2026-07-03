@@ -40,6 +40,17 @@ export type PublicGameEvent =
       chosenColor: CardColor;
       revealedCard: Card | null;
       drawnCount: number;
+    }
+  | {
+      id: string;
+      type: "handsPassed";
+      actorId: string;
+    }
+  | {
+      id: string;
+      type: "handsSwapped";
+      actorId: string;
+      targetId: string;
     };
 
 export type GameState = {
@@ -111,6 +122,7 @@ export type PlayerView = {
   drawPileCount: number;
   pendingDrawDecisionCard: Card | null;
   pendingSevenSwapTargets: PlayerInfo[];
+  spectatorHands: Record<string, Card[]>;
   publicEvent: PublicGameEvent | null;
   winner: string | null;
   finishedPlayers: string[];
@@ -123,6 +135,7 @@ export type PlayCardsAction = {
   cardIds: string[];
   chosenColor?: CardColor;
   callUno?: boolean;
+  sevenSwapTargetUserId?: string;
 };
 
 export type StackCardsAction = {

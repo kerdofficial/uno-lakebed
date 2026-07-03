@@ -236,6 +236,120 @@ test("no mercy eliminates players at 30 cards and finishes when one player remai
   assert.equal(state.winner, dani);
 });
 
+test("no mercy eliminated player is placed last after remaining players finish", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+  const bigHand = Array.from({ length: 29 }, (_, index) =>
+    makeCard(`z-${index}`, "number", "blue", index % 10)
+  );
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 2,
+    hands: {
+      [x]: [makeCard("x-red-1", "number", "red", 1), makeCard("x-red-2", "number", "red", 2)],
+      [y]: [makeCard("y-red-1", "number", "red", 1)],
+      [z]: bigHand,
+    },
+    drawPile: [makeCard("draw-red-1", "number", "red", 1)],
+  });
+
+  state = step(state, z, { type: "drawCards" });
+  assert.deepEqual(state.eliminatedPlayers, [z]);
+  assert.deepEqual(state.placements, []);
+
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-red-1"],
+  });
+  state = step(state, y, {
+    type: "playCards",
+    cardIds: ["y-red-1"],
+  });
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-red-2"],
+  });
+
+  assert.equal(state.phase, "finished");
+  assert.equal(state.winner, y);
+  assert.deepEqual(state.placements, [y, x, z]);
+});
+
+test("no mercy corrupted eliminated placement is repaired before resolving winner", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 0,
+    hands: {
+      [x]: [makeCard("x-red-1", "number", "red", 1)],
+      [y]: [makeCard("y-red-1", "number", "red", 1), makeCard("y-red-2", "number", "red", 2)],
+      [z]: [],
+    },
+    finishedPlayers: [z],
+    eliminatedPlayers: [z],
+    placements: [z],
+    winner: z,
+  });
+
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-red-1"],
+  });
+  state = step(state, y, {
+    type: "playCards",
+    cardIds: ["y-red-1"],
+  });
+
+  assert.equal(state.phase, "finished");
+  assert.equal(state.winner, x);
+  assert.deepEqual(state.placements, [x, y, z]);
+});
+
+test("no mercy empty hand finisher remains winner", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 2,
+    hands: {
+      [x]: [makeCard("x-red-1", "number", "red", 1), makeCard("x-red-2", "number", "red", 2)],
+      [y]: [makeCard("y-red-1", "number", "red", 1)],
+      [z]: [makeCard("z-red-1", "number", "red", 1)],
+    },
+  });
+
+  state = step(state, z, {
+    type: "playCards",
+    cardIds: ["z-red-1"],
+  });
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-red-1"],
+  });
+  state = step(state, y, {
+    type: "playCards",
+    cardIds: ["y-red-1"],
+  });
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-red-2"],
+  });
+
+  assert.equal(state.phase, "finished");
+  assert.equal(state.winner, z);
+  assert.deepEqual(state.placements, [z, y, x]);
+});
+
 test("no mercy color roulette reveals only the final matching card", () => {
   const dani = "dani";
   const balazs = "balazs";
@@ -304,4 +418,108 @@ test("player view exposes public events and seven swap targets safely", () => {
 
   assert.equal(view.publicEvent?.id, "event-1");
   assert.deepEqual(view.pendingSevenSwapTargets.map((target) => target.userId), [balazs, peti]);
+});
+
+test("player view only exposes spectator hands to players who cannot be revived", () => {
+  const dani = "dani";
+  const balazs = "balazs";
+  const peti = "peti";
+  const players = [
+    { userId: dani, displayName: "Dani", picture: "" },
+    { userId: balazs, displayName: "Balazs", picture: "" },
+    { userId: peti, displayName: "Peti", picture: "" },
+  ];
+  const state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [dani, balazs, peti],
+    hands: {
+      [dani]: [],
+      [balazs]: [makeCard("balazs-1", "number", "red", 1)],
+      [peti]: [makeCard("peti-1", "number", "red", 1), makeCard("peti-2", "number", "blue", 2)],
+    },
+    finishedPlayers: [dani],
+    revivableFinishedPlayers: [],
+    placements: [dani],
+    winner: dani,
+  });
+
+  const spectatorView = computePlayerView(state, dani, "game-1", players);
+  assert.deepEqual(Object.keys(spectatorView.spectatorHands).sort(), [balazs, peti].sort());
+  assert.deepEqual(spectatorView.spectatorHands[balazs].map((card) => card.id), ["balazs-1"]);
+
+  const activeView = computePlayerView(state, balazs, "game-1", players);
+  assert.deepEqual(activeView.spectatorHands, {});
+
+  const revivableView = computePlayerView(
+    { ...state, revivableFinishedPlayers: [dani] },
+    dani,
+    "game-1",
+    players
+  );
+  assert.deepEqual(revivableView.spectatorHands, {});
+
+  const eliminatedView = computePlayerView(
+    { ...state, finishedPlayers: [dani, peti], eliminatedPlayers: [peti], hands: { ...state.hands, [peti]: [] } },
+    peti,
+    "game-1",
+    players
+  );
+  assert.deepEqual(Object.keys(eliminatedView.spectatorHands), [balazs]);
+});
+
+test("no mercy hand actions publish pass and swap events", () => {
+  const dani = "dani";
+  const balazs = "balazs";
+  const peti = "peti";
+
+  let state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [dani, balazs, peti],
+      hands: {
+        [dani]: [makeCard("dani-0", "number", "red", 0), makeCard("dani-9", "number", "blue", 9)],
+        [balazs]: [makeCard("balazs-1", "number", "red", 1)],
+        [peti]: [makeCard("peti-2", "number", "red", 2)],
+      },
+    }),
+    dani,
+    {
+      type: "playCards",
+      cardIds: ["dani-0"],
+    }
+  );
+
+  assert.equal(state.publicEvent?.type, "handsPassed");
+  assert.equal(state.publicEvent?.actorId, dani);
+
+  state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [dani, balazs, peti],
+      hands: {
+        [dani]: [makeCard("dani-7", "number", "red", 7)],
+        [balazs]: [makeCard("balazs-1", "number", "red", 1)],
+        [peti]: [makeCard("peti-2", "number", "red", 2)],
+      },
+    }),
+    dani,
+    {
+      type: "playCards",
+      cardIds: ["dani-7"],
+      sevenSwapTargetUserId: peti,
+    }
+  );
+
+  assert.equal(state.publicEvent?.type, "handsSwapped");
+  assert.equal(state.publicEvent?.actorId, dani);
+  assert.equal(state.publicEvent?.targetId, peti);
+
+  const view = computePlayerView(state, balazs, "game-1", [
+    { userId: dani, displayName: "Dani", picture: "" },
+    { userId: balazs, displayName: "Balazs", picture: "" },
+    { userId: peti, displayName: "Peti", picture: "" },
+  ]);
+  assert.equal(view.publicEvent?.type, "handsSwapped");
+  assert.equal(view.turnOrder.find((player) => player.userId === view.publicEvent?.actorId)?.displayName, "Dani");
+  assert.equal(view.turnOrder.find((player) => player.userId === view.publicEvent?.targetId)?.displayName, "Peti");
 });
