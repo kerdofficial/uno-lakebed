@@ -89,6 +89,13 @@ export function AnimationStyles() {
         20% { opacity: 1; }
         100% { opacity: 0; }
       }
+      @keyframes event-splash {
+        0% { transform: scale(0.92); opacity: 0; }
+        12% { transform: scale(1.02); opacity: 1; }
+        20% { transform: scale(1); opacity: 1; }
+        82% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(1.03); opacity: 0; }
+      }
     `}</style>
   );
 }

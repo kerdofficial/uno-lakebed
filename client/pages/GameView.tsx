@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerInfo, PlayerView } from "../../shared/gameTypes";
 import { cardNeedsColorChoice, getNumberParity } from "../../shared/gameLogic/effects";
 import { useGameAnimations } from "../hooks/useGameAnimations";
+import { useEventSplash } from "../hooks/useEventSplash";
 import { ColorPicker } from "../components/game/ColorPicker";
+import { EventSplash } from "../components/game/EventSplash";
 import { ColorRouletteRevealToast } from "../components/game/ColorRouletteRevealToast";
 import { Confetti } from "../components/game/Confetti";
 import { DrawDecisionModal } from "../components/game/DrawDecisionModal";
@@ -22,7 +24,7 @@ type PlayerViewRecord = {
   view: string;
 };
 
-const FINISH_SCREEN_DELAY_MS = 1400;
+const FINISH_SCREEN_DELAY_MS = 2600;
 
 export function GameView({
   gameId,
@@ -55,6 +57,7 @@ export function GameView({
     : null;
 
   const animations = useGameAnimations(view);
+  const eventSplash = useEventSplash(view, animations.unoCalledBy !== null);
   const isFinished = view?.phase === "finished";
 
   const isMyTurn =
@@ -469,6 +472,8 @@ export function GameView({
           onPlay={handlePlayDrawnCard}
         />
       )}
+
+      {eventSplash && <EventSplash key={eventSplash.id} splash={eventSplash} />}
 
       {animations.unoCalledBy && <UnoSplash />}
 
