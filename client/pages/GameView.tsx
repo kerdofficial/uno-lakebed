@@ -15,6 +15,7 @@ import { MyHand } from "../components/game/MyHand";
 import { OpponentBar } from "../components/game/OpponentBar";
 import { PlayArea } from "../components/game/PlayArea";
 import { SevenSwapTargetModal } from "../components/game/SevenSwapTargetModal";
+import { SpectatorPanel } from "../components/game/SpectatorPanel";
 import { UnoSplash } from "../components/game/UnoSplash";
 
 type PlayerViewRecord = {
@@ -421,6 +422,9 @@ export function GameView({
     );
   }
 
+  const isSpectating =
+    Object.keys(view.spectatorHands).length > 0 && view.phase !== "finished";
+
   const colorPickerTrigger =
     mustChooseColor && !triggerCard
       ? cardNeedsColorChoice(view.discardTop)
@@ -506,16 +510,20 @@ export function GameView({
           onDraw={handleDraw}
           onCatchUno={handleCatchUno}
         />
-        <MyHand
-          view={view}
-          selectedCards={selectedCards}
-          unoArmed={unoArmed}
-          onToggleCard={handleToggleCard}
-          onToggleUnoArmed={() => setUnoArmed((current) => !current)}
-          onPlaySelected={handlePlaySelected}
-          onClearSelection={handleClearSelection}
-          colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets)}
-        />
+        {isSpectating ? (
+          <SpectatorPanel view={view} />
+        ) : (
+          <MyHand
+            view={view}
+            selectedCards={selectedCards}
+            unoArmed={unoArmed}
+            onToggleCard={handleToggleCard}
+            onToggleUnoArmed={() => setUnoArmed((current) => !current)}
+            onPlaySelected={handlePlaySelected}
+            onClearSelection={handleClearSelection}
+            colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets)}
+          />
+        )}
       </div>
     </div>
   );
