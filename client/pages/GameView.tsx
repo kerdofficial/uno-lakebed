@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useAuth } from "lakebed/client";
 import { useCallback, useEffect, useState } from "preact/hooks";
-import type { Card, CardColor, PlayerView } from "../../shared/gameTypes";
-import { cardNeedsColorChoice } from "../../shared/gameLogic/effects";
+import type { Card, CardColor, PlayerInfo, PlayerView } from "../../shared/gameTypes";
+import { cardNeedsColorChoice, getNumberParity } from "../../shared/gameLogic/effects";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { ColorPicker } from "../components/game/ColorPicker";
 import { ColorRouletteRevealToast } from "../components/game/ColorRouletteRevealToast";
@@ -43,6 +43,7 @@ export function GameView({
     cardIds: string[];
   } | null>(null);
   const [triggerCard, setTriggerCard] = useState<Card | null>(null);
+  const [pendingSwapTargets, setPendingSwapTargets] = useState<PlayerInfo[] | null>(null);
   const [unoArmed, setUnoArmed] = useState(false);
   const [drawDecisionUnoArmed, setDrawDecisionUnoArmed] = useState(false);
   const [showFinishedScreen, setShowFinishedScreen] = useState(false);
@@ -113,7 +114,12 @@ export function GameView({
     setUnoArmed(false);
     setDrawDecisionUnoArmed(false);
     setShowColorPicker(false);
+    setPendingSwapTargets(null);
   }, [isFinished]);
+
+  useEffect(() => {
+    if (view?.pendingSevenSwapTargets.length) setPendingSwapTargets(null);
+  }, [view?.pendingSevenSwapTargets.length]);
 
   const handleToggleCard = useCallback((cardId: string) => {
     if (!view || view.phase === "finished") return;
@@ -134,10 +140,11 @@ export function GameView({
     setSelectedCards(new Set());
     setUnoArmed(false);
     setShowColorPicker(false);
+    setPendingSwapTargets(null);
   };
 
   const submitSelectedPlay = useCallback(
-    async (cardIds: string[], chosenColor?: CardColor) => {
+    async (cardIds: string[], chosenColor?: CardColor, sevenSwapTargetUserId?: string) => {
       if (!view || view.phase === "finished") return;
 
       const actionType = view.canStack ? "stackCards" : "playCards";
@@ -148,6 +155,7 @@ export function GameView({
           cardIds,
           chosenColor,
           callUno: unoArmed && view.myHand.length - cardIds.length === 1,
+          ...(actionType === "playCards" && sevenSwapTargetUserId ? { sevenSwapTargetUserId } : {}),
         }),
       );
       clearSelections();
@@ -196,8 +204,19 @@ export function GameView({
       return;
     }
 
+    if (view.gameMode === "noMercy" && getNumberParity(cards, 7) === "odd") {
+      const targets = view.turnOrder.filter(
+        (p) => p.userId !== auth.userId && !view.finishedPlayers.includes(p.userId),
+      );
+      if (targets.length > 1) {
+        setPendingAction({ kind: "playSelected", cardIds });
+        setPendingSwapTargets(targets);
+        return;
+      }
+    }
+
     await submitSelectedPlay(cardIds);
-  }, [selectedCards, submitSelectedPlay, view]);
+  }, [auth.userId, selectedCards, submitSelectedPlay, view]);
 
   const handleColorChosen = useCallback(
     async (color: CardColor) => {
@@ -284,6 +303,23 @@ export function GameView({
     },
     [gameAction, gameId, view?.phase],
   );
+
+  const handleCancelColorPicker = useCallback(() => {
+    setShowColorPicker(false);
+    setPendingAction(null);
+    setTriggerCard(null);
+  }, []);
+
+  const handleCancelSwapPicker = useCallback(() => {
+    setPendingSwapTargets(null);
+    setPendingAction(null);
+  }, []);
+
+  const handleClientSwapTargetChosen = useCallback(async (targetUserId: string) => {
+    if (!pendingAction || view?.phase === "finished") return;
+    setPendingSwapTargets(null);
+    await submitSelectedPlay(pendingAction.cardIds, undefined, targetUserId);
+  }, [pendingAction, submitSelectedPlay, view?.phase]);
 
   if (!view) {
     return (
@@ -402,12 +438,20 @@ export function GameView({
         <ColorPicker
           onChoose={handleColorChosen}
           triggerCard={colorPickerTrigger}
+          onCancel={mustChooseColor ? undefined : handleCancelColorPicker}
         />
       )}
       {showPublicEventId === view.publicEvent?.id && (
         <ColorRouletteRevealToast view={view} />
       )}
-      {view.pendingSevenSwapTargets.length > 0 && !showColorPicker && (
+      {pendingSwapTargets && view.pendingSevenSwapTargets.length === 0 && (
+        <SevenSwapTargetModal
+          targets={pendingSwapTargets}
+          onChoose={handleClientSwapTargetChosen}
+          onCancel={handleCancelSwapPicker}
+        />
+      )}
+      {view.pendingSevenSwapTargets.length > 0 && !showColorPicker && !pendingSwapTargets && (
         <SevenSwapTargetModal
           targets={view.pendingSevenSwapTargets}
           onChoose={handleSevenSwapTarget}
@@ -465,7 +509,7 @@ export function GameView({
           onToggleUnoArmed={() => setUnoArmed((current) => !current)}
           onPlaySelected={handlePlaySelected}
           onClearSelection={handleClearSelection}
-          colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard)}
+          colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets)}
         />
       </div>
     </div>

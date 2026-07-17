@@ -12,9 +12,10 @@ const COLORS: { color: CardColor; label: string; rotate?: string }[] = [
 type ColorPickerProps = {
   onChoose: (color: CardColor) => void;
   triggerCard?: Card | null;
+  onCancel?: () => void;
 };
 
-export function ColorPicker({ onChoose, triggerCard }: ColorPickerProps) {
+export function ColorPicker({ onChoose, triggerCard, onCancel }: ColorPickerProps) {
   const cardLabel =
     triggerCard?.type === "wild4"
       ? "+4"
@@ -62,6 +63,14 @@ export function ColorPicker({ onChoose, triggerCard }: ColorPickerProps) {
             </button>
           ))}
         </div>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="mt-4 w-full rounded-full bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20 active:scale-[0.98] cursor-pointer"
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );

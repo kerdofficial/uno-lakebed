@@ -3,9 +3,10 @@ import type { PlayerInfo } from "../../../shared/gameTypes";
 type SevenSwapTargetModalProps = {
   targets: PlayerInfo[];
   onChoose: (targetUserId: string) => void;
+  onCancel?: () => void;
 };
 
-export function SevenSwapTargetModal({ targets, onChoose }: SevenSwapTargetModalProps) {
+export function SevenSwapTargetModal({ targets, onChoose, onCancel }: SevenSwapTargetModalProps) {
   if (targets.length === 0) return null;
 
   return (
@@ -38,6 +39,14 @@ export function SevenSwapTargetModal({ targets, onChoose }: SevenSwapTargetModal
             </button>
           ))}
         </div>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="mt-4 w-full rounded-full bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20 active:scale-[0.98] cursor-pointer"
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );
