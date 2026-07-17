@@ -12,9 +12,9 @@ import {
 } from "./helpers";
 
 export const mutations = {
-  createGame: mutation((ctx) => {
+  createGame: mutation(async (ctx) => {
     const code = generateRoomCode();
-    ctx.db.games.insert({
+    const game = await ctx.db.games.insert({
       code,
       hostId: ctx.auth.userId,
       status: "lobby",
@@ -24,10 +24,7 @@ export const mutations = {
       roundsPlayed: "0",
     });
 
-    const game = ctx.db.games.where("code", code).all()[0];
-    if (!game) throw new Error("Failed to create game");
-
-    ctx.db.players.insert({
+    await ctx.db.players.insert({
       gameId: game.id,
       userId: ctx.auth.userId,
       displayName: ctx.auth.displayName || "Player",
@@ -40,23 +37,27 @@ export const mutations = {
     return { gameId: game.id, code };
   }),
 
-  joinGame: mutation((ctx, code: string) => {
-    const game = ctx.db.games.where("code", code.toUpperCase()).all()[0];
+  joinGame: mutation(async (ctx, code: string) => {
+    const game = await ctx.db.games
+      .withIndex("by_code", (q) => q.eq("code", code.toUpperCase()))
+      .first();
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby" && game.status !== "finished") {
       throw new Error("Room is not joinable");
     }
 
-    const existing = findPlayerInGame(ctx, game.id, ctx.auth.userId);
+    const existing = await findPlayerInGame(ctx, game.id, ctx.auth.userId);
     if (existing) return { gameId: game.id };
 
-    const currentPlayers = ctx.db.players.where("gameId", game.id).all();
+    const currentPlayers = await ctx.db.players
+      .withIndex("by_game_seat", (q) => q.eq("gameId", game.id))
+      .collect();
     const settings = parseGameSettings(game.settings);
     if (currentPlayers.length >= settings.maxPlayers) {
       throw new Error("Game is full");
     }
 
-    ctx.db.players.insert({
+    await ctx.db.players.insert({
       gameId: game.id,
       userId: ctx.auth.userId,
       displayName: ctx.auth.displayName || "Player",
@@ -69,14 +70,14 @@ export const mutations = {
     return { gameId: game.id };
   }),
 
-  toggleReady: mutation((ctx, gameId: string) => {
-    const player = findPlayerInGame(ctx, gameId, ctx.auth.userId);
+  toggleReady: mutation(async (ctx, gameId: string) => {
+    const player = await findPlayerInGame(ctx, gameId, ctx.auth.userId);
     if (!player) throw new Error("Not in this game");
-    ctx.db.players.update(player.id, { isReady: !player.isReady });
+    await ctx.db.players.update(player.id, { isReady: !player.isReady });
   }),
 
-  updateGameSettings: mutation((ctx, gameId: string, settingsJson: string) => {
-    const game = ctx.db.games.get(gameId);
+  updateGameSettings: mutation(async (ctx, gameId: string, settingsJson: string) => {
+    const game = await ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.hostId !== ctx.auth.userId) throw new Error("Only host can update settings");
     if (game.status !== "lobby" && game.status !== "finished") {
@@ -84,13 +85,13 @@ export const mutations = {
     }
 
     const settings = parseGameSettings(settingsJson);
-    ctx.db.games.update(gameId, {
+    await ctx.db.games.update(gameId, {
       settings: JSON.stringify(settings),
     });
   }),
 
-  startGame: mutation((ctx, gameId: string) => {
-    const game = ctx.db.games.get(gameId);
+  startGame: mutation(async (ctx, gameId: string) => {
+    const game = await ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.hostId !== ctx.auth.userId) throw new Error("Only host can start");
     if (game.status === "playing") throw new Error("Game already started");
@@ -99,63 +100,68 @@ export const mutations = {
       throw new Error("Room reached the game limit");
     }
 
-    const players = ctx.db.players.where("gameId", gameId).orderBy("seatIndex", "asc").all();
+    const players = await ctx.db.players
+      .withIndex("by_game_seat", (q) => q.eq("gameId", gameId))
+      .order("asc")
+      .collect();
     if (players.length < 2) throw new Error("Need at least 2 players");
 
     const settings = parseGameSettings(game.settings);
     const gameState = initializeGame(players.map((player: any) => player.userId), settings);
-    ctx.db.games.update(gameId, {
+    await ctx.db.games.update(gameId, {
       status: "playing",
       state: JSON.stringify(gameState),
       winnerId: "",
     });
 
-    refreshPlayerViews(ctx, gameId, gameState);
+    await refreshPlayerViews(ctx, gameId, gameState);
   }),
 
-  closeRoom: mutation((ctx, gameId: string) => {
-    const game = ctx.db.games.get(gameId);
+  closeRoom: mutation(async (ctx, gameId: string) => {
+    const game = await ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.hostId !== ctx.auth.userId) throw new Error("Only host can close");
     if (game.status === "playing") throw new Error("Cannot close during a game");
-    ctx.db.games.update(gameId, { status: "closed" });
+    await ctx.db.games.update(gameId, { status: "closed" });
   }),
 
-  kickPlayer: mutation((ctx, gameId: string, targetUserId: string) => {
-    const game = ctx.db.games.get(gameId);
+  kickPlayer: mutation(async (ctx, gameId: string, targetUserId: string) => {
+    const game = await ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.hostId !== ctx.auth.userId) throw new Error("Only host can kick");
     if (game.status === "playing") throw new Error("Cannot kick during a game");
     if (targetUserId === game.hostId) throw new Error("Host cannot be kicked");
 
-    const player = findPlayerInGame(ctx, gameId, targetUserId);
+    const player = await findPlayerInGame(ctx, gameId, targetUserId);
     if (!player) throw new Error("Player not in this room");
 
-    ctx.db.players.delete(player.id);
-    const view = findPlayerView(ctx, gameId, targetUserId);
-    if (view) ctx.db.playerViews.delete(view.id);
+    await ctx.db.players.delete(player.id);
+    const view = await findPlayerView(ctx, gameId, targetUserId);
+    if (view) await ctx.db.playerViews.delete(view.id);
   }),
 
-  updateDisplayName: mutation((ctx, gameId: string, displayName: string) => {
-    const player = findPlayerInGame(ctx, gameId, ctx.auth.userId);
+  updateDisplayName: mutation(async (ctx, gameId: string, displayName: string) => {
+    const player = await findPlayerInGame(ctx, gameId, ctx.auth.userId);
     if (!player) throw new Error("Not in this game");
 
-    ctx.db.players.update(player.id, {
+    await ctx.db.players.update(player.id, {
       displayName: normalizeDisplayName(displayName),
     });
 
-    const game = ctx.db.games.get(gameId);
+    const game = await ctx.db.games.get(gameId);
     if (game?.state && game.status === "playing") {
-      refreshPlayerViews(ctx, gameId, JSON.parse(game.state));
+      await refreshPlayerViews(ctx, gameId, JSON.parse(game.state));
     }
   }),
 
-  gameAction: mutation((ctx, gameId: string, actionJson: string) => {
-    const game = ctx.db.games.get(gameId);
+  gameAction: mutation(async (ctx, gameId: string, actionJson: string) => {
+    const game = await ctx.db.games.get(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game not in progress");
 
-    const players = ctx.db.players.where("gameId", gameId).all();
+    const players = await ctx.db.players
+      .withIndex("by_game_seat", (q) => q.eq("gameId", gameId))
+      .collect();
     if (!players.some((player: any) => player.userId === ctx.auth.userId)) {
       throw new Error("Not a player in this game");
     }
@@ -174,29 +180,31 @@ export const mutations = {
       updateData.roundsPlayed = String(numberField(game.roundsPlayed) + 1);
 
       for (const player of players) {
-        ctx.db.players.update(player.id, { isReady: false });
+        await ctx.db.players.update(player.id, { isReady: false });
       }
 
       const winner = players.find((player: any) => player.userId === newState.winner);
       if (winner) {
-        ctx.db.players.update(winner.id, {
+        await ctx.db.players.update(winner.id, {
           wins: String(numberField(winner.wins) + 1),
         });
       }
     }
 
-    ctx.db.games.update(gameId, updateData);
-    refreshPlayerViews(ctx, gameId, newState);
+    await ctx.db.games.update(gameId, updateData);
+    await refreshPlayerViews(ctx, gameId, newState);
   }),
 
-  leaveGame: mutation((ctx, gameId: string) => {
-    const player = findPlayerInGame(ctx, gameId, ctx.auth.userId);
+  leaveGame: mutation(async (ctx, gameId: string) => {
+    const player = await findPlayerInGame(ctx, gameId, ctx.auth.userId);
     if (!player) return;
 
-    ctx.db.players.delete(player.id);
-    const remaining = ctx.db.players.where("gameId", gameId).all();
+    await ctx.db.players.delete(player.id);
+    const remaining = await ctx.db.players
+      .withIndex("by_game_seat", (q) => q.eq("gameId", gameId))
+      .collect();
     if (remaining.length === 0) {
-      ctx.db.games.delete(gameId);
+      await ctx.db.games.delete(gameId);
     }
   }),
 };

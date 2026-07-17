@@ -38,23 +38,27 @@ export function normalizeGameRecord(game: any) {
   };
 }
 
-export function findPlayerInGame(ctx: any, gameId: string, userId: string) {
-  const gamePlayers = ctx.db.players.where("gameId", gameId).all();
+export async function findPlayerInGame(ctx: any, gameId: string, userId: string) {
+  const gamePlayers = await ctx.db.players
+    .withIndex("by_game_seat", (q: any) => q.eq("gameId", gameId))
+    .collect();
   return gamePlayers.find((player: any) => player.userId === userId) || null;
 }
 
-export function findPlayerView(ctx: any, gameId: string, userId: string) {
-  const views = ctx.db.playerViews.where("gameId", gameId).all();
+export async function findPlayerView(ctx: any, gameId: string, userId: string) {
+  const views = await ctx.db.playerViews
+    .withIndex("by_game", (q: any) => q.eq("gameId", gameId))
+    .collect();
   return views.find((view: any) => view.pvUserId === userId) || null;
 }
 
-export function upsertPlayerView(ctx: any, gameId: string, userId: string, viewJson: string) {
-  const existing = findPlayerView(ctx, gameId, userId);
+export async function upsertPlayerView(ctx: any, gameId: string, userId: string, viewJson: string) {
+  const existing = await findPlayerView(ctx, gameId, userId);
   if (existing) {
-    ctx.db.playerViews.update(existing.id, { view: viewJson });
+    await ctx.db.playerViews.update(existing.id, { view: viewJson });
     return;
   }
-  ctx.db.playerViews.insert({ gameId, pvUserId: userId, view: viewJson });
+  await ctx.db.playerViews.insert({ gameId, pvUserId: userId, view: viewJson });
 }
 
 function playerInfos(players: any[]) {
@@ -65,28 +69,35 @@ function playerInfos(players: any[]) {
   }));
 }
 
-export function refreshPlayerViews(ctx: any, gameId: string, state: GameState) {
-  const players = ctx.db.players.where("gameId", gameId).orderBy("seatIndex", "asc").all();
+export async function refreshPlayerViews(ctx: any, gameId: string, state: GameState) {
+  const players = await ctx.db.players
+    .withIndex("by_game_seat", (q: any) => q.eq("gameId", gameId))
+    .order("asc")
+    .collect();
   const infos = playerInfos(players);
 
   for (const player of players) {
     const view = computePlayerView(state, player.userId, gameId, infos);
-    upsertPlayerView(ctx, gameId, player.userId, JSON.stringify(view));
+    await upsertPlayerView(ctx, gameId, player.userId, JSON.stringify(view));
   }
 }
 
-export function gamesForUser(ctx: any, includeFinished: boolean) {
-  const myPlayers = ctx.db.players.where("userId", ctx.auth.userId).all();
+export async function gamesForUser(ctx: any, includeFinished: boolean) {
+  const myPlayers = await ctx.db.players
+    .withIndex("by_user", (q: any) => q.eq("userId", ctx.auth.userId))
+    .collect();
   const results: any[] = [];
 
   for (const player of myPlayers) {
-    const game = ctx.db.games.get(player.gameId);
+    const game = await ctx.db.games.get(player.gameId);
     if (
       game &&
       game.status !== "closed" &&
       (includeFinished || game.status !== "finished")
     ) {
-      const gamePlayers = ctx.db.players.where("gameId", player.gameId).all();
+      const gamePlayers = await ctx.db.players
+        .withIndex("by_game_seat", (q: any) => q.eq("gameId", player.gameId))
+        .collect();
       results.push({
         ...normalizeGameRecord(game),
         players: gamePlayers.map(normalizePlayerRecord),
