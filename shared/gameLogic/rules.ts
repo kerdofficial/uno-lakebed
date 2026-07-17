@@ -41,7 +41,6 @@ export function checkWinner(state: GameState): string | null {
   if (getRevivableFinishedPlayers(state).length > 0) return null;
   if (state.gameMode === "noMercy") {
     const activePlayers = state.turnOrder.filter((playerId) => !state.finishedPlayers.includes(playerId));
-    if (activePlayers.length === 1) return activePlayers[0];
     if (activePlayers.length === 0) return getPlacements(state)[0] || state.winner;
   }
   return getPlacements(state).length === state.turnOrder.length ? state.winner : null;

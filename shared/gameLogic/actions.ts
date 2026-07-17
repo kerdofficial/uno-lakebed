@@ -80,6 +80,7 @@ function markPlayerEliminated(state: GameState, playerId: string): GameState {
 
 function normalizePlacementState(state: GameState): GameState {
   state = normalizeGameState(state);
+  if (state.phase === "finished") return state;
   const validFinishedPlayers = new Set(state.finishedPlayers);
   const eliminatedPlayers =
     state.gameMode === "noMercy" ? new Set(state.eliminatedPlayers) : new Set<string>();
@@ -142,7 +143,7 @@ function appendNoMercyFinalPlacements(state: GameState): GameState {
     if (!placements.includes(playerId)) placements.push(playerId);
   }
 
-  for (const playerId of nextState.eliminatedPlayers) {
+  for (const playerId of [...nextState.eliminatedPlayers].reverse()) {
     if (!placements.includes(playerId)) placements.push(playerId);
   }
 

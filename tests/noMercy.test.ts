@@ -523,3 +523,74 @@ test("no mercy hand actions publish pass and swap events", () => {
   assert.equal(view.turnOrder.find((player) => player.userId === view.publicEvent?.actorId)?.displayName, "Dani");
   assert.equal(view.turnOrder.find((player) => player.userId === view.publicEvent?.targetId)?.displayName, "Peti");
 });
+
+test("no mercy places later-eliminated players ahead of earlier-eliminated players", () => {
+  const a = "a", b = "b", c = "c", d = "d";
+  const bigHand = (prefix: string) =>
+    Array.from({ length: 29 }, (_, i) => makeCard(`${prefix}-${i}`, "number", "blue", i % 10));
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [a, b, c, d],
+    currentPlayerIndex: 2,
+    hands: {
+      [a]: [makeCard("a-red-1", "number", "red", 1), makeCard("a-red-2", "number", "red", 2)],
+      [b]: [makeCard("b-red-1", "number", "red", 3)],
+      [c]: bigHand("c"),
+      [d]: bigHand("d"),
+    },
+  });
+
+  state = step(state, c, { type: "drawCards" });
+  assert.deepEqual(state.eliminatedPlayers, [c]);
+  state = step(state, d, { type: "drawCards" });
+  assert.deepEqual(state.eliminatedPlayers, [c, d]);
+
+  state = step(state, a, { type: "playCards", cardIds: ["a-red-1"] });
+  state = step(state, b, { type: "playCards", cardIds: ["b-red-1"] });
+  state = step(state, a, { type: "playCards", cardIds: ["a-red-2"] });
+
+  assert.equal(state.phase, "finished");
+  assert.equal(state.winner, b);
+  assert.deepEqual(state.placements, [b, a, d, c]);
+});
+
+test("no mercy crowns the longest-surviving player when everyone is eliminated", () => {
+  const a = "a", b = "b";
+  const hand = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, i) => makeCard(`${prefix}-${i}`, "number", "blue", i % 10));
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [a, b],
+    currentPlayerIndex: 1,
+    hands: { [a]: hand("a", 30), [b]: hand("b", 29) },
+    drawPile: [makeCard("draw-red-1", "number", "red", 1)],
+  });
+
+  state = step(state, b, { type: "drawCards" });
+
+  assert.deepEqual(state.eliminatedPlayers, [a, b]);
+  assert.equal(state.phase, "finished");
+  assert.deepEqual(state.placements, [b, a]);
+  assert.equal(state.winner, b);
+});
+
+test("no mercy finished placements survive post-game actions", () => {
+  const x = "x", y = "y", z = "z";
+  const state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    phase: "finished",
+    hands: { [x]: [], [y]: [], [z]: [] },
+    finishedPlayers: [y, x, z],
+    eliminatedPlayers: [z],
+    placements: [y, x, z],
+    winner: y,
+  });
+
+  const next = step(state, x, { type: "callUno" });
+
+  assert.deepEqual(next.placements, [y, x, z]);
+  assert.equal(next.winner, y);
+});
