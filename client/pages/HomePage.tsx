@@ -1,7 +1,8 @@
-import { Link, navigate, signInWithGoogle, useAuth, useMutation, useQuery } from "lakebed/client";
-import { useRef, useState } from "preact/hooks";
+import { Link, navigate, useAuth, useMutation, useQuery } from "lakebed/client";
+import { useState } from "preact/hooks";
 import type { GameInfo, PlayerRecord } from "../../shared/gameTypes";
 import { UnoCard } from "../components/cards/UnoCard";
+import { DEFAULT_GUEST_USER_ID, sanitizeName, signInWithName } from "../utils/guestSession";
 
 type MyGame = GameInfo & { players: PlayerRecord[] };
 
@@ -28,7 +29,8 @@ export function HomePage() {
   const myGames = useQuery<MyGame[]>("myGames");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
-  const signInStartedRef = useRef(false);
+  const [nameInput, setNameInput] = useState("");
+  const isSignedIn = !auth.isLoading && auth.userId !== DEFAULT_GUEST_USER_ID;
 
   const handleCreate = async () => {
     try {
@@ -51,20 +53,14 @@ export function HomePage() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    if (signInStartedRef.current) {
+  const handleNameSubmit = () => {
+    const clean = sanitizeName(nameInput);
+    if (!clean || clean.toLowerCase() === "local") {
+      setError("Please enter a name");
       return;
     }
-
-    signInStartedRef.current = true;
-
-    try {
-      await signInWithGoogle();
-    } catch (signInError) {
-      signInStartedRef.current = false;
-      const message = signInError instanceof Error ? signInError.message : "Sign in failed";
-      setError(message);
-    }
+    setError("");
+    signInWithName(clean);
   };
 
   return (
@@ -101,27 +97,37 @@ export function HomePage() {
         </div>
       </div>
 
-      {auth.isGuest ? (
+      {!isSignedIn ? (
         <div
           className="flex flex-col items-center gap-5 w-full max-w-xs"
           style={{ animation: "fade-slide-in 0.4s ease-out 0.3s both" }}
         >
           <div className="w-full bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 text-center backdrop-blur-sm">
             <p className="text-neutral-300 text-sm mb-5">
-              Sign in to start playing
+              Enter your name to start playing
             </p>
+            <input
+              type="text"
+              value={nameInput}
+              onInput={(event) => setNameInput((event.target as HTMLInputElement).value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleNameSubmit();
+              }}
+              placeholder="Your name"
+              maxLength={24}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-white text-center text-lg placeholder:text-neutral-600 focus:border-neutral-400 outline-none transition-colors mb-3"
+            />
             <button
               type="button"
-              onTouchEnd={() => {
-                void handleGoogleSignIn();
-              }}
-              onClick={() => {
-                void handleGoogleSignIn();
-              }}
-              className="relative z-20 border border-neutral-600 px-6 py-3 text-sm font-medium text-white hover:border-white hover:bg-neutral-800 rounded-xl transition-all w-full cursor-pointer"
+              onClick={handleNameSubmit}
+              disabled={sanitizeName(nameInput).length === 0}
+              className="relative z-20 bg-red-600 text-white px-6 py-3 text-sm font-bold hover:bg-red-700 rounded-xl transition-all w-full cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98]"
             >
-              Sign in with Google
+              Start playing
             </button>
+            {error && (
+              <div className="text-red-400 text-sm text-center mt-3">{error}</div>
+            )}
           </div>
         </div>
       ) : (
