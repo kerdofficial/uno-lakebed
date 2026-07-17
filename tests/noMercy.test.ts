@@ -641,3 +641,165 @@ test("no mercy discard all play arms UNO when the discard leaves one card", () =
   assert.equal(view.turnOrder.find((player) => player.userId === dani)?.calledUno, true);
   assert.deepEqual(view.unoCatchable, []);
 });
+
+test("no mercy wild reverse draw four reverses before targeting with three active players", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [makeCard("x-red-1", "number", "red", 1), makeCard("x-red-2", "number", "red", 2)],
+      [y]: [makeCard("y-rev4", "wildReverseDraw4", null), makeCard("y-blue-3", "number", "blue", 3)],
+      [z]: [makeCard("z-red-9", "number", "red", 9)],
+    },
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-rev4"], chosenColor: "red" });
+
+  assert.equal(state.phase, "stacking");
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, x);
+  assert.equal(state.pendingDrawStack, 4);
+
+  state = step(state, x, { type: "drawCards" });
+
+  assert.equal(state.phase, "play");
+  assert.equal(state.hands[x].length, 6);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], z);
+});
+
+test("no mercy wild reverse draw four self-targets when only two players remain active", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 1,
+    finishedPlayers: [z],
+    hands: {
+      [x]: [makeCard("x-blue-3", "number", "blue", 3)],
+      [y]: [makeCard("y-rev4", "wildReverseDraw4", null), makeCard("y-blue-8", "number", "blue", 8)],
+      [z]: [],
+    },
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-rev4"], chosenColor: "blue" });
+
+  assert.equal(state.phase, "stacking");
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], y);
+
+  state = step(state, y, { type: "drawCards" });
+
+  assert.equal(state.phase, "play");
+  assert.equal(state.hands[y].length, 5);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], x);
+});
+
+test("no mercy self-targeted reverse draw four chain passes to the opponent when stacked on", () => {
+  const x = "x";
+  const y = "y";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [makeCard("x-blue-3", "number", "blue", 3)],
+      [y]: [
+        makeCard("y-rev4", "wildReverseDraw4", null),
+        makeCard("y-plus6", "wildDraw6", null),
+        makeCard("y-green-2", "number", "green", 2),
+      ],
+    },
+    drawPile: Array.from({ length: 10 }, (_, index) =>
+      makeCard(`pile-${index}`, "number", "blue", (index % 6) + 1)
+    ),
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-rev4"], chosenColor: "red" });
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.direction, -1);
+
+  state = step(state, y, { type: "stackCards", cardIds: ["y-plus6"], chosenColor: "blue" });
+  assert.equal(state.pendingDrawTarget, x);
+  assert.equal(state.pendingDrawStack, 10);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], x);
+
+  state = step(state, x, { type: "drawCards" });
+  assert.equal(state.phase, "play");
+  assert.equal(state.hands[x].length, 11);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], y);
+});
+
+test("no mercy stacked reverse draw four flips the chain back to the opponent", () => {
+  const x = "x";
+  const y = "y";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [makeCard("x-rev4", "wildReverseDraw4", null), makeCard("x-green-2", "number", "green", 2)],
+      [y]: [makeCard("y-plus4", "draw4", "red"), makeCard("y-green-9", "number", "green", 9)],
+    },
+    drawPile: Array.from({ length: 8 }, (_, index) =>
+      makeCard(`pile-${index}`, "number", "blue", (index % 6) + 1)
+    ),
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-plus4"] });
+  assert.equal(state.pendingDrawTarget, x);
+  assert.equal(state.direction, 1);
+  assert.equal(state.pendingDrawStack, 4);
+
+  state = step(state, x, { type: "stackCards", cardIds: ["x-rev4"], chosenColor: "blue" });
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.pendingDrawStack, 8);
+
+  state = step(state, y, { type: "drawCards" });
+  assert.equal(state.hands[y].length, 9);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], x);
+});
+
+test("no mercy wild reverse draw four played from a draw decision self-targets with two players", () => {
+  const x = "x";
+  const y = "y";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [makeCard("x-blue-3", "number", "blue", 3)],
+      [y]: [makeCard("y-green-9", "number", "green", 9)],
+    },
+    drawPile: [makeCard("drawn-rev4", "wildReverseDraw4", null)],
+  });
+
+  state = step(state, y, { type: "drawCards" });
+  assert.equal(state.pendingDrawDecision?.playerId, y);
+  assert.equal(state.pendingDrawDecision?.cardId, "drawn-rev4");
+
+  state = step(state, y, {
+    type: "resolveDrawDecision",
+    decision: "play",
+    chosenColor: "red",
+    callUno: true,
+  });
+
+  assert.equal(state.phase, "stacking");
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.pendingDrawStack, 4);
+  assert.equal(state.unoCallStatus[y], true);
+});
