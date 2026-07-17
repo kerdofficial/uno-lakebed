@@ -11,6 +11,7 @@ type MyHandProps = {
   onToggleUnoArmed: () => void;
   onPlaySelected: () => void;
   onClearSelection: () => void;
+  onSelectAll: (cardIds: string[]) => void;
   colorPickerVisible: boolean;
 };
 
@@ -53,6 +54,7 @@ export function MyHand({
   onToggleUnoArmed,
   onPlaySelected,
   onClearSelection,
+  onSelectAll,
   colorPickerVisible,
 }: MyHandProps) {
   const length = view.myHand.length;
@@ -211,10 +213,14 @@ export function MyHand({
     : "transform 0.3s ease-out";
   const marginTransition = isDragging ? "none" : "margin-left 0.3s ease-out";
 
+  const eligibleExtraIds = view.myHand
+    .filter((card) => !selectedCards.has(card.id) && canToggleCard(view, selectedCards, card))
+    .map((card) => card.id);
+
   return (
     <div className="relative flex flex-col items-center gap-2 pb-4">
       {selectedCards.size > 0 && (
-        <div className="flex items-center gap-2 mb-2" style={{ animation: "bounce-in 0.3s ease-out" }}>
+        <div className="flex flex-wrap justify-center items-center gap-2 mb-2" style={{ animation: "bounce-in 0.3s ease-out" }}>
           {showUnoToggle && (
             <button
               onClick={onToggleUnoArmed}
@@ -225,6 +231,14 @@ export function MyHand({
               }`}
             >
               {unoArmed ? "UNO armed" : "Call UNO"}
+            </button>
+          )}
+          {eligibleExtraIds.length > 0 && (
+            <button
+              onClick={() => onSelectAll(eligibleExtraIds)}
+              className="bg-white/10 text-white font-black text-sm px-4 py-2 rounded-full shadow-lg hover:bg-white/20 transition-colors cursor-pointer"
+            >
+              Select all
             </button>
           )}
           <button

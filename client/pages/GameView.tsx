@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useAuth } from "lakebed/client";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerInfo, PlayerView } from "../../shared/gameTypes";
-import { cardNeedsColorChoice, getNumberParity, getRemainingHandCountAfterPlay } from "../../shared/gameLogic/effects";
+import { cardNeedsColorChoice, getDrawAmount, getNumberParity, getRemainingHandCountAfterPlay } from "../../shared/gameLogic/effects";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { useEventSplash } from "../hooks/useEventSplash";
 import { ColorPicker } from "../components/game/ColorPicker";
@@ -16,6 +16,7 @@ import { OpponentBar } from "../components/game/OpponentBar";
 import { PlayArea } from "../components/game/PlayArea";
 import { SevenSwapTargetModal } from "../components/game/SevenSwapTargetModal";
 import { SpectatorPanel } from "../components/game/SpectatorPanel";
+import { TopColorModal } from "../components/game/TopColorModal";
 import { UnoSplash } from "../components/game/UnoSplash";
 
 type PlayerViewRecord = {
@@ -26,6 +27,62 @@ type PlayerViewRecord = {
 };
 
 const FINISH_SCREEN_DELAY_MS = 2600;
+
+function feasibleTopColors(cards: Card[], view: PlayerView): CardColor[] {
+  if (cards.length < 2) return [];
+  if (view.canStack) {
+    const maxAmount = Math.max(...cards.map((card) => getDrawAmount(card)));
+    const colors = new Set<CardColor>();
+    for (const card of cards) {
+      if (getDrawAmount(card) === maxAmount && card.color) colors.add(card.color);
+    }
+    return Array.from(colors);
+  }
+  const playable = new Set(view.playableCardIds);
+  const colors = new Set<CardColor>();
+  for (const card of cards) {
+    if (!card.color) continue;
+    const hasDistinctFirst = cards.some(
+      (other) => other.id !== card.id && playable.has(other.id),
+    );
+    if (hasDistinctFirst) colors.add(card.color);
+  }
+  return Array.from(colors);
+}
+
+function orderCardIdsForTopColor(
+  cards: Card[],
+  chosenColor: CardColor,
+  view: PlayerView,
+): string[] {
+  if (view.canStack) {
+    const sorted = [...cards].sort((a, b) => getDrawAmount(a) - getDrawAmount(b));
+    const lastIndex = sorted.findLastIndex((card) => card.color === chosenColor);
+    const last = sorted[lastIndex];
+    const rest = sorted.filter((_, i) => i !== lastIndex);
+    return [...rest, last].map((card) => card.id);
+  }
+  const playable = new Set(view.playableCardIds);
+  const firstCandidates = cards.filter((card) => playable.has(card.id));
+  const first =
+    firstCandidates.find(
+      (card) =>
+        card.color !== chosenColor &&
+        cards.some((other) => other.id !== card.id && other.color === chosenColor),
+    ) ||
+    firstCandidates.find((card) =>
+      cards.some((other) => other.id !== card.id && other.color === chosenColor),
+    ) ||
+    firstCandidates[0] ||
+    cards[0];
+  const last = cards.find(
+    (card) => card.color === chosenColor && card.id !== first.id,
+  );
+  const middle = cards.filter(
+    (card) => card.id !== first.id && card.id !== (last ? last.id : ""),
+  );
+  return [first.id, ...middle.map((card) => card.id), ...(last ? [last.id] : [])];
+}
 
 export function GameView({
   gameId,
@@ -47,6 +104,7 @@ export function GameView({
   } | null>(null);
   const [triggerCard, setTriggerCard] = useState<Card | null>(null);
   const [pendingSwapTargets, setPendingSwapTargets] = useState<PlayerInfo[] | null>(null);
+  const [pendingTopColorCards, setPendingTopColorCards] = useState<{ cards: Card[]; colors: CardColor[] } | null>(null);
   const [unoArmed, setUnoArmed] = useState(false);
   const [drawDecisionUnoArmed, setDrawDecisionUnoArmed] = useState(false);
   const [showFinishedScreen, setShowFinishedScreen] = useState(false);
@@ -122,6 +180,7 @@ export function GameView({
     setDrawDecisionUnoArmed(false);
     setShowColorPicker(false);
     setPendingSwapTargets(null);
+    setPendingTopColorCards(null);
   }, [isFinished]);
 
   useEffect(() => {
@@ -148,6 +207,7 @@ export function GameView({
     setUnoArmed(false);
     setShowColorPicker(false);
     setPendingSwapTargets(null);
+    setPendingTopColorCards(null);
   };
 
   const submitSelectedPlay = useCallback(
@@ -190,6 +250,21 @@ export function GameView({
     [drawDecisionUnoArmed, gameAction, gameId, view?.phase],
   );
 
+  const proceedWithOrderedPlay = useCallback(async (cardIds: string[], cards: Card[]) => {
+    if (!view) return;
+    if (!view.canStack && view.gameMode === "noMercy" && getNumberParity(cards, 7) === "odd") {
+      const targets = view.turnOrder.filter(
+        (p) => p.userId !== auth.userId && !view.finishedPlayers.includes(p.userId),
+      );
+      if (targets.length > 1) {
+        setPendingAction({ kind: "playSelected", cardIds });
+        setPendingSwapTargets(targets);
+        return;
+      }
+    }
+    await submitSelectedPlay(cardIds);
+  }, [auth.userId, submitSelectedPlay, view]);
+
   const handlePlaySelected = useCallback(async () => {
     if (!view || view.phase === "finished" || selectedCards.size === 0) return;
 
@@ -211,19 +286,23 @@ export function GameView({
       return;
     }
 
-    if (view.gameMode === "noMercy" && getNumberParity(cards, 7) === "odd") {
-      const targets = view.turnOrder.filter(
-        (p) => p.userId !== auth.userId && !view.finishedPlayers.includes(p.userId),
-      );
-      if (targets.length > 1) {
-        setPendingAction({ kind: "playSelected", cardIds });
-        setPendingSwapTargets(targets);
+    const distinctColors = new Set(
+      cards.map((card) => card.color).filter((color): color is CardColor => color != null),
+    );
+    if (cards.length > 1 && distinctColors.size > 1) {
+      const colors = feasibleTopColors(cards, view);
+      if (colors.length > 1) {
+        setPendingTopColorCards({ cards, colors });
+        return;
+      }
+      if (colors.length === 1) {
+        await proceedWithOrderedPlay(orderCardIdsForTopColor(cards, colors[0], view), cards);
         return;
       }
     }
 
-    await submitSelectedPlay(cardIds);
-  }, [auth.userId, selectedCards, submitSelectedPlay, view]);
+    await proceedWithOrderedPlay(cardIds, cards);
+  }, [proceedWithOrderedPlay, selectedCards, view]);
 
   const handleColorChosen = useCallback(
     async (color: CardColor) => {
@@ -327,6 +406,22 @@ export function GameView({
     setPendingSwapTargets(null);
     await submitSelectedPlay(pendingAction.cardIds, undefined, targetUserId);
   }, [pendingAction, submitSelectedPlay, view?.phase]);
+
+  const handleSelectAll = useCallback((cardIds: string[]) => {
+    if (!view || view.phase === "finished") return;
+    setSelectedCards((previous) => new Set([...previous, ...cardIds]));
+  }, [view]);
+
+  const handleTopColorChosen = useCallback(async (color: CardColor) => {
+    if (!pendingTopColorCards || view?.phase === "finished") return;
+    const { cards } = pendingTopColorCards;
+    setPendingTopColorCards(null);
+    await proceedWithOrderedPlay(orderCardIdsForTopColor(cards, color, view!), cards);
+  }, [pendingTopColorCards, proceedWithOrderedPlay, view]);
+
+  const handleCancelTopColor = useCallback(() => {
+    setPendingTopColorCards(null);
+  }, []);
 
   if (!view) {
     return (
@@ -451,6 +546,13 @@ export function GameView({
           onCancel={mustChooseColor ? undefined : handleCancelColorPicker}
         />
       )}
+      {pendingTopColorCards && (
+        <TopColorModal
+          colors={pendingTopColorCards.colors}
+          onChoose={handleTopColorChosen}
+          onCancel={handleCancelTopColor}
+        />
+      )}
       {showPublicEventId === view.publicEvent?.id && (
         <ColorRouletteRevealToast view={view} />
       )}
@@ -524,7 +626,8 @@ export function GameView({
             onToggleUnoArmed={() => setUnoArmed((current) => !current)}
             onPlaySelected={handlePlaySelected}
             onClearSelection={handleClearSelection}
-            colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets)}
+            onSelectAll={handleSelectAll}
+            colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets || pendingTopColorCards)}
           />
         )}
       </div>
