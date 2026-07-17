@@ -64,6 +64,24 @@ export function getNumberParity(cards: Card[], value: number): "odd" | "even" | 
   return count % 2 === 0 ? "even" : "odd";
 }
 
+export function getRemainingHandCountAfterPlay(
+  hand: Card[],
+  selectedCardIds: string[],
+  gameMode: GameMode
+): number {
+  const selectedIds = new Set(selectedCardIds);
+  const remaining = hand.filter((card) => !selectedIds.has(card.id));
+
+  if (gameMode === "noMercy" && selectedCardIds.length === 1) {
+    const played = hand.find((card) => card.id === selectedCardIds[0]);
+    if (played && played.type === "discardAll" && played.color) {
+      return remaining.filter((card) => card.color !== played.color).length;
+    }
+  }
+
+  return remaining.length;
+}
+
 export function isMatchingRouletteCard(card: Card, chosenColor: CardColor): boolean {
   return !!card.color && card.color === chosenColor && !isWildCard(card);
 }

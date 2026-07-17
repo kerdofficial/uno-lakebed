@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useAuth } from "lakebed/client";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerInfo, PlayerView } from "../../shared/gameTypes";
-import { cardNeedsColorChoice, getNumberParity } from "../../shared/gameLogic/effects";
+import { cardNeedsColorChoice, getNumberParity, getRemainingHandCountAfterPlay } from "../../shared/gameLogic/effects";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { useEventSplash } from "../hooks/useEventSplash";
 import { ColorPicker } from "../components/game/ColorPicker";
@@ -64,10 +64,13 @@ export function GameView({
   const isMyTurn =
     !!view && view.turnOrder[view.currentPlayerIndex]?.userId === auth.userId;
   const mustChooseColor = !!view && view.phase === "chooseColor" && isMyTurn;
-  const selectedCount = selectedCards.size;
-  const willHaveOneCardAfterSelectedPlay = !!view && view.myHand.length - selectedCount === 1;
+  const willHaveOneCardAfterSelectedPlay =
+    !!view && getRemainingHandCountAfterPlay(view.myHand, Array.from(selectedCards), view.gameMode) === 1;
   const pendingDrawDecisionCard = view?.pendingDrawDecisionCard || null;
-  const canCallUnoForDrawDecision = !!view && view.myHand.length - 1 === 1;
+  const canCallUnoForDrawDecision =
+    !!view &&
+    !!pendingDrawDecisionCard &&
+    getRemainingHandCountAfterPlay(view.myHand, [pendingDrawDecisionCard.id], view.gameMode) === 1;
 
   useEffect(() => {
     if (!isFinished) {
@@ -158,7 +161,7 @@ export function GameView({
           type: actionType,
           cardIds,
           chosenColor,
-          callUno: unoArmed && view.myHand.length - cardIds.length === 1,
+          callUno: unoArmed && getRemainingHandCountAfterPlay(view.myHand, cardIds, view.gameMode) === 1,
           ...(actionType === "playCards" && sevenSwapTargetUserId ? { sevenSwapTargetUserId } : {}),
         }),
       );

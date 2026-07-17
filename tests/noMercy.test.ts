@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { computePlayerView } from "../shared/gameLogic/playerView.ts";
 import { createNoMercyDeck, createRegularDeck } from "../shared/gameLogic/decks.ts";
+import { getRemainingHandCountAfterPlay } from "../shared/gameLogic/effects.ts";
 import { makeCard, makeState, step } from "./gameLogicTestUtils.ts";
 
 function countByType(deck: ReturnType<typeof createNoMercyDeck>) {
@@ -593,4 +594,50 @@ test("no mercy finished placements survive post-game actions", () => {
 
   assert.deepEqual(next.placements, [y, x, z]);
   assert.equal(next.winner, y);
+});
+
+test("remaining hand count after play accounts for discard all extras", () => {
+  const hand = [
+    makeCard("drop-red", "discardAll", "red"),
+    makeCard("red-1", "number", "red", 1),
+    makeCard("red-skip", "skip", "red"),
+    makeCard("blue-3", "number", "blue", 3),
+  ];
+
+  assert.equal(getRemainingHandCountAfterPlay(hand, ["drop-red"], "noMercy"), 1);
+  assert.equal(getRemainingHandCountAfterPlay(hand, ["drop-red"], "regular"), 3);
+  assert.equal(getRemainingHandCountAfterPlay(hand, ["red-1"], "noMercy"), 3);
+  assert.equal(getRemainingHandCountAfterPlay(hand, ["red-1", "blue-3"], "noMercy"), 2);
+});
+
+test("no mercy discard all play arms UNO when the discard leaves one card", () => {
+  const dani = "dani";
+  const balazs = "balazs";
+
+  const state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [dani, balazs],
+      hands: {
+        [dani]: [
+          makeCard("drop-red", "discardAll", "red"),
+          makeCard("red-1", "number", "red", 1),
+          makeCard("blue-3", "number", "blue", 3),
+        ],
+        [balazs]: [makeCard("balazs-red-2", "number", "red", 2)],
+      },
+    }),
+    dani,
+    { type: "playCards", cardIds: ["drop-red"], callUno: true }
+  );
+
+  assert.deepEqual(state.hands[dani].map((card) => card.id), ["blue-3"]);
+  assert.equal(state.unoCallStatus[dani], true);
+
+  const view = computePlayerView(state, balazs, "game-1", [
+    { userId: dani, displayName: "Dani", picture: "" },
+    { userId: balazs, displayName: "Balazs", picture: "" },
+  ]);
+  assert.equal(view.turnOrder.find((player) => player.userId === dani)?.calledUno, true);
+  assert.deepEqual(view.unoCatchable, []);
 });

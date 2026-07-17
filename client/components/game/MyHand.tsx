@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Card, PlayerView } from "../../../shared/gameTypes";
+import { getRemainingHandCountAfterPlay } from "../../../shared/gameLogic/effects";
 import { UnoCard } from "../cards/UnoCard";
 
 type MyHandProps = {
@@ -201,7 +202,8 @@ export function MyHand({
   }, []);
 
   const showUnoToggle =
-    selectedCards.size > 0 && length - selectedCards.size === 1;
+    selectedCards.size > 0 &&
+    getRemainingHandCountAfterPlay(view.myHand, Array.from(selectedCards), view.gameMode) === 1;
 
   const transformTransition = isDragging
     ? "none"
