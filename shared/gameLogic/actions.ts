@@ -401,7 +401,12 @@ export function applyCards(
     cardNeedsColorChoice(lastCard)
       ? chosenColor || state.currentColor
       : (lastCard.color as CardColor) || state.currentColor;
-  const lastAction = buildActionDescription(playerId, playedCards, chosenColor);
+  const lastAction = buildActionDescription(
+    playerId,
+    playedCards,
+    chosenColor,
+    discardAllResult.extraDiscardedCards.length
+  );
 
   let nextState: GameState = {
     ...state,

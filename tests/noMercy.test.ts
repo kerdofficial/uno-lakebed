@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { computePlayerView } from "../shared/gameLogic/playerView.ts";
 import { createNoMercyDeck, createRegularDeck } from "../shared/gameLogic/decks.ts";
 import { getRemainingHandCountAfterPlay } from "../shared/gameLogic/effects.ts";
+import { buildActionParts } from "../shared/gameLogic/descriptions.ts";
 import { makeCard, makeState, step } from "./gameLogicTestUtils.ts";
 
 function countByType(deck: ReturnType<typeof createNoMercyDeck>) {
@@ -857,4 +858,44 @@ test("no mercy rejects mixing skip all with other card types", () => {
       cardIds: ["x-skipall-red", "x-skip-red"],
     })
   );
+});
+
+test("no mercy discard all reports the total discarded count", () => {
+  const dani = "dani";
+  const balazs = "balazs";
+
+  const state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [dani, balazs],
+      hands: {
+        [dani]: [
+          makeCard("drop-red", "discardAll", "red"),
+          makeCard("red-1", "number", "red", 1),
+          makeCard("red-skip", "skip", "red"),
+          makeCard("blue-3", "number", "blue", 3),
+        ],
+        [balazs]: [makeCard("balazs-red-2", "number", "red", 2)],
+      },
+    }),
+    dani,
+    { type: "playCards", cardIds: ["drop-red"] }
+  );
+
+  assert.equal(state.lastAction, "dani played Red Discard All, discarding 3 cards");
+});
+
+test("action parts render the discard all count as plain text", () => {
+  const parts = buildActionParts("dani played Red Discard All, discarding 3 cards", [
+    { userId: "dani", displayName: "Dani", picture: "" },
+  ]);
+
+  assert.deepEqual(parts, [
+    { text: "Dani", kind: "player" },
+    { text: "played", kind: "text" },
+    { text: "Red", kind: "color", color: "red" },
+    { text: "Discard All", kind: "card" },
+    { text: ",", kind: "text" },
+    { text: "discarding 3 cards", kind: "text" },
+  ]);
 });

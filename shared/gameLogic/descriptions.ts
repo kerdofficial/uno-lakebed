@@ -19,10 +19,14 @@ export function cardLabel(card: Card): string {
 export function buildActionDescription(
   playerId: string,
   cards: Card[],
-  chosenColor?: CardColor
+  chosenColor?: CardColor,
+  extraDiscardedCount = 0
 ): string {
   const labels = cards.map(cardLabel).join(", ");
   let description = `${playerId} played ${labels}`;
+  if (extraDiscardedCount > 0) {
+    description += `, discarding ${extraDiscardedCount + cards.length} cards`;
+  }
   if (chosenColor) description += ` (chose ${chosenColor})`;
   return description;
 }
@@ -79,9 +83,11 @@ export function buildActionParts(
 ): ActionTextPart[] {
   if (!action) return [];
 
-  const playedMatch = action.match(/^(\S+)\s+(played|stacked)\s+(.+?)(?:\s+\(chose\s+(red|yellow|green|blue)\))?$/i);
+  const playedMatch = action.match(
+    /^(\S+)\s+(played|stacked)\s+(.+?)(?:,\s+discarding\s+(\d+)\s+cards)?(?:\s+\(chose\s+(red|yellow|green|blue)\))?$/i
+  );
   if (playedMatch) {
-    const [, playerId, verb, labels, chosenColor] = playedMatch;
+    const [, playerId, verb, labels, discardingCount, chosenColor] = playedMatch;
     const cardLabels = labels.split(", ");
     const parts: ActionTextPart[] = [
       { text: findPlayerDisplayName(playerId, players), kind: "player" },
@@ -94,6 +100,11 @@ export function buildActionParts(
         parts.push({ text: ",", kind: "text" });
       }
     });
+
+    if (discardingCount) {
+      parts.push({ text: ",", kind: "text" });
+      parts.push({ text: `discarding ${discardingCount} cards`, kind: "text" });
+    }
 
     if (chosenColor) {
       parts.push({ text: "(chose", kind: "text" });
