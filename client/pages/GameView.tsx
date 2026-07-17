@@ -2,6 +2,7 @@ import { useMutation, useQuery, useAuth } from "lakebed/client";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Card, CardColor, PlayerInfo, PlayerView } from "../../shared/gameTypes";
 import { cardNeedsColorChoice, getDrawAmount, getNumberParity, getRemainingHandCountAfterPlay } from "../../shared/gameLogic/effects";
+import { getTurnOrderPositions } from "../utils/turnOrderPositions";
 import { useGameAnimations } from "../hooks/useGameAnimations";
 import { useEventSplash } from "../hooks/useEventSplash";
 import { ColorPicker } from "../components/game/ColorPicker";
@@ -522,6 +523,7 @@ export function GameView({
 
   const isSpectating =
     Object.keys(view.spectatorHands).length > 0 && view.phase !== "finished";
+  const turnPositions = getTurnOrderPositions(view);
 
   const colorPickerTrigger =
     mustChooseColor && !triggerCard
@@ -628,6 +630,7 @@ export function GameView({
             onClearSelection={handleClearSelection}
             onSelectAll={handleSelectAll}
             colorPickerVisible={!!(showColorPicker || mustChooseColor || pendingDrawDecisionCard || pendingSwapTargets || pendingTopColorCards)}
+            myOrderNumber={turnPositions.get(auth.userId) ?? null}
           />
         )}
       </div>

@@ -7,6 +7,7 @@ type PlayerAvatarProps = {
   isCurrentTurn: boolean;
   small?: boolean;
   seatIndex?: number;
+  orderNumber?: number | null;
 };
 
 export function PlayerAvatar({
@@ -14,27 +15,35 @@ export function PlayerAvatar({
   isCurrentTurn,
   small = false,
   seatIndex = 0,
+  orderNumber = null,
 }: PlayerAvatarProps) {
   const size = small ? "w-8 h-8" : "w-12 h-12";
   const fallbackBg = SEAT_COLORS[seatIndex % SEAT_COLORS.length];
 
   return (
     <div className="flex flex-col items-center gap-0.5 relative">
-      <div
-        className={`${size} rounded-full overflow-hidden flex items-center justify-center ${!player.picture ? fallbackBg : "bg-neutral-700"} ${isCurrentTurn ? "border-[3px] border-amber-400" : ""}`}
-        style={isCurrentTurn ? { animation: "turn-pulse 2s ease-in-out infinite" } : {}}
-      >
-        {player.picture ? (
-          <img
-            src={player.picture}
-            alt=""
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <span className="text-white font-bold text-sm">
-            {player.displayName.slice(0, 1).toUpperCase()}
-          </span>
+      <div className="relative">
+        <div
+          className={`${size} rounded-full overflow-hidden flex items-center justify-center ${!player.picture ? fallbackBg : "bg-neutral-700"} ${isCurrentTurn ? "border-[3px] border-amber-400" : ""}`}
+          style={isCurrentTurn ? { animation: "turn-pulse 2s ease-in-out infinite" } : {}}
+        >
+          {player.picture ? (
+            <img
+              src={player.picture}
+              alt=""
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span className="text-white font-bold text-sm">
+              {player.displayName.slice(0, 1).toUpperCase()}
+            </span>
+          )}
+        </div>
+        {orderNumber != null && (
+          <div className="absolute -top-1 -left-1 z-10 flex h-5 w-5 select-none items-center justify-center rounded-full bg-neutral-800 border border-neutral-600 text-[10px] font-bold text-neutral-300">
+            {orderNumber}
+          </div>
         )}
       </div>
       <div className="text-center">

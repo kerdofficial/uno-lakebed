@@ -13,6 +13,7 @@ type MyHandProps = {
   onClearSelection: () => void;
   onSelectAll: (cardIds: string[]) => void;
   colorPickerVisible: boolean;
+  myOrderNumber?: number | null;
 };
 
 const ANGLE_STEP = 3;
@@ -56,6 +57,7 @@ export function MyHand({
   onClearSelection,
   onSelectAll,
   colorPickerVisible,
+  myOrderNumber = null,
 }: MyHandProps) {
   const length = view.myHand.length;
   const overlapPx = Math.max(8, 30 - length * 2);
@@ -346,6 +348,11 @@ export function MyHand({
       {length > 0 && (
         <div className="pointer-events-none absolute bottom-1 right-2 z-40 flex h-8 w-8 select-none items-center justify-center rounded-full bg-neutral-800/80 text-sm font-bold text-white">
           {length}
+        </div>
+      )}
+      {length > 0 && myOrderNumber != null && (
+        <div className="pointer-events-none absolute bottom-1 left-2 z-40 flex h-8 w-8 select-none items-center justify-center rounded-full bg-neutral-800/80 text-sm font-bold text-neutral-300">
+          #{myOrderNumber}
         </div>
       )}
     </div>

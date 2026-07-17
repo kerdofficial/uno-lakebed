@@ -1,4 +1,5 @@
 import type { PlayerView } from "../../../shared/gameTypes";
+import { getTurnOrderPositions } from "../../utils/turnOrderPositions";
 import { UnoCard } from "../cards/UnoCard";
 import { PlayerAvatar } from "./PlayerAvatar";
 
@@ -10,6 +11,7 @@ type OpponentBarProps = {
 
 export function OpponentBar({ view, myUserId, catchableUserIds }: OpponentBarProps) {
   const opponents = view.turnOrder.filter((player) => player.userId !== myUserId);
+  const positions = getTurnOrderPositions(view);
 
   return (
     <div className="flex justify-center gap-6 md:gap-8 py-3">
@@ -34,6 +36,7 @@ export function OpponentBar({ view, myUserId, catchableUserIds }: OpponentBarPro
               player={player}
               isCurrentTurn={isCurrentTurn}
               seatIndex={seatIndex}
+              orderNumber={positions.get(player.userId) ?? null}
             />
             <div className="relative flex items-center justify-center">
               <div className="flex -space-x-4 opacity-40">
