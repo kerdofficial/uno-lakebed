@@ -18,6 +18,7 @@ const ANGLE_STEP = 3;
 const MAX_DROP = 20;
 const LIFT_PAD = 36;
 const DROP_PAD = 26;
+const SELECT_GAP = 14;
 
 function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card) {
   if (selectedCards.has(card.id)) return true;
@@ -55,7 +56,7 @@ export function MyHand({
   colorPickerVisible,
 }: MyHandProps) {
   const length = view.myHand.length;
-  const overlapPx = Math.max(16, 42 - length * 2);
+  const overlapPx = Math.max(8, 30 - length * 2);
 
   const hasDealt = useRef(false);
   const prevCardIds = useRef<Set<string>>(new Set());
@@ -208,6 +209,7 @@ export function MyHand({
   const transformTransition = isDragging
     ? "none"
     : "transform 0.3s ease-out";
+  const marginTransition = isDragging ? "none" : "margin-left 0.3s ease-out";
 
   return (
     <div className="relative flex flex-col items-center gap-2 pb-4">
@@ -264,7 +266,11 @@ export function MyHand({
           {view.myHand.map((card, index) => {
             const isPlayable = canToggleCard(view, selectedCards, card);
             const isSelected = selectedCards.has(card.id);
-            const marginLeft = index === 0 ? 0 : -overlapPx;
+            const leftNeighborSelected = index > 0 && selectedCards.has(view.myHand[index - 1].id);
+            const marginLeft =
+              index === 0
+                ? 0
+                : -overlapPx + (isSelected ? SELECT_GAP : 0) + (leftNeighborSelected ? SELECT_GAP : 0);
 
             const rel = index - activeC;
             const angle = clamp(rel, -6, 6) * ANGLE_STEP;
@@ -286,6 +292,7 @@ export function MyHand({
                   marginLeft: `${marginLeft}px`,
                   zIndex: isSelected || colorPickerVisible ? 50 : index,
                   animation: animationStyle,
+                  transition: marginTransition,
                 }}
               >
                 <div
