@@ -803,3 +803,58 @@ test("no mercy wild reverse draw four played from a draw decision self-targets w
   assert.equal(state.pendingDrawStack, 4);
   assert.equal(state.unoCallStatus[y], true);
 });
+
+test("no mercy allows multi-playing skip all cards and returns to the same player", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    hands: {
+      [x]: [
+        makeCard("x-skipall-red", "skipAll", "red"),
+        makeCard("x-skipall-blue", "skipAll", "blue"),
+        makeCard("x-blue-3", "number", "blue", 3),
+      ],
+      [y]: [makeCard("y-red-1", "number", "red", 1)],
+      [z]: [makeCard("z-red-2", "number", "red", 2)],
+    },
+  });
+
+  state = step(state, x, {
+    type: "playCards",
+    cardIds: ["x-skipall-red", "x-skipall-blue"],
+  });
+
+  assert.equal(state.phase, "play");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], x);
+  assert.equal(state.currentColor, "blue");
+  assert.deepEqual(state.hands[x].map((card) => card.id), ["x-blue-3"]);
+});
+
+test("no mercy rejects mixing skip all with other card types", () => {
+  const x = "x";
+  const y = "y";
+
+  const state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    hands: {
+      [x]: [
+        makeCard("x-skipall-red", "skipAll", "red"),
+        makeCard("x-skip-red", "skip", "red"),
+        makeCard("x-blue-3", "number", "blue", 3),
+      ],
+      [y]: [makeCard("y-red-1", "number", "red", 1)],
+    },
+  });
+
+  assert.throws(() =>
+    step(state, x, {
+      type: "playCards",
+      cardIds: ["x-skipall-red", "x-skip-red"],
+    })
+  );
+});

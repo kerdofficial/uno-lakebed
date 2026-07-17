@@ -34,7 +34,7 @@ function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card)
   if (first.type === "number" && card.type === "number") {
     return first.value === card.value;
   }
-  if (first.type === "skip" || first.type === "reverse") {
+  if (first.type === "skip" || first.type === "reverse" || first.type === "skipAll") {
     return card.type === first.type;
   }
   return false;

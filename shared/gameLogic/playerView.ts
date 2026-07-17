@@ -170,10 +170,14 @@ function validatePlayCards(
           error: "Multi-play number cards must have same value",
         };
       }
-    } else if (firstCard.type !== "skip" && firstCard.type !== "reverse") {
+    } else if (
+      firstCard.type !== "skip" &&
+      firstCard.type !== "reverse" &&
+      firstCard.type !== "skipAll"
+    ) {
       return {
         valid: false,
-        error: "Can only multi-play numbers, skips, or reverses",
+        error: "Can only multi-play numbers, skips, reverses, or skip alls",
       };
     }
   }
