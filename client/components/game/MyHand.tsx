@@ -208,7 +208,7 @@ export function MyHand({
     : "transform 0.3s ease-out";
 
   return (
-    <div className="flex flex-col items-center gap-2 pb-4">
+    <div className="relative flex flex-col items-center gap-2 pb-4">
       {selectedCards.size > 0 && (
         <div className="flex items-center gap-2 mb-2" style={{ animation: "bounce-in 0.3s ease-out" }}>
           {showUnoToggle && (
@@ -318,6 +318,11 @@ export function MyHand({
               transition: isDragging ? "none" : "left 0.2s ease-out",
             }}
           />
+        </div>
+      )}
+      {length > 0 && (
+        <div className="pointer-events-none absolute bottom-1 right-2 z-40 flex h-8 w-8 select-none items-center justify-center rounded-full bg-neutral-800/80 text-sm font-bold text-white">
+          {length}
         </div>
       )}
     </div>
