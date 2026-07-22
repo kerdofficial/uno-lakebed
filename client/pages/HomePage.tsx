@@ -1,5 +1,5 @@
-import { Link, navigate, useAuth, useMutation, useQuery } from "lakebed/client";
-import { useState } from "preact/hooks";
+import { Link, navigate, useAuth, useLocation, useMutation, useQuery } from "lakebed/client";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { GameInfo, PlayerRecord } from "../../shared/gameTypes";
 import { UnoCard } from "../components/cards/UnoCard";
 import { DEFAULT_GUEST_USER_ID, sanitizeName, signInWithName } from "../utils/guestSession";
@@ -24,13 +24,28 @@ const DECO_TRANSFORMS = [
 
 export function HomePage() {
   const auth = useAuth();
+  const location = useLocation();
   const createGame = useMutation<[], { gameId: string; code: string }>("createGame");
   const joinGame = useMutation<[code: string], { gameId: string }>("joinGame");
   const myGames = useQuery<MyGame[]>("myGames");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [nameInput, setNameInput] = useState("");
+  const joinedInviteRef = useRef<string | null>(null);
   const isSignedIn = !auth.isLoading && auth.userId !== DEFAULT_GUEST_USER_ID;
+  const inviteCode = new URLSearchParams(location.search).get("room")?.trim().toUpperCase() || "";
+
+  useEffect(() => {
+    if (auth.isLoading || !isSignedIn || !inviteCode || joinedInviteRef.current === inviteCode) {
+      return;
+    }
+
+    joinedInviteRef.current = inviteCode;
+    setError("");
+    void joinGame(inviteCode)
+      .then((result) => navigate(`/game/${result.gameId}`))
+      .catch((error: any) => setError(error.message || "Failed to join game"));
+  }, [auth.isLoading, inviteCode, isSignedIn, joinGame]);
 
   const handleCreate = async () => {
     try {
@@ -104,7 +119,7 @@ export function HomePage() {
         >
           <div className="w-full bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 text-center backdrop-blur-sm">
             <p className="text-neutral-300 text-sm mb-5">
-              Enter your name to start playing
+              {inviteCode ? `Enter your name to join ${inviteCode}` : "Enter your name to start playing"}
             </p>
             <input
               type="text"
@@ -135,6 +150,11 @@ export function HomePage() {
           className="w-full max-w-xs flex flex-col gap-3"
           style={{ animation: "fade-slide-in 0.4s ease-out 0.2s both" }}
         >
+          {inviteCode && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-5 py-4 text-center text-sm text-amber-200">
+              Joining room <span className="font-mono font-bold tracking-wider">{inviteCode}</span>...
+            </div>
+          )}
           <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-5">
             <button
               onClick={handleCreate}

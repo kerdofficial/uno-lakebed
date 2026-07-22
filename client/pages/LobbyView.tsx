@@ -47,7 +47,7 @@ export function LobbyView({ game, players }: LobbyViewProps) {
 
   const [displayName, setDisplayName] = useState(myPlayer?.displayName || "");
   const [nameError, setNameError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const canEditSettings = isHost && (game.status === "lobby" || game.status === "finished");
 
   useEffect(() => {
@@ -66,8 +66,16 @@ export function LobbyView({ game, players }: LobbyViewProps) {
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(game.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setCopied("code");
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const handleCopyInviteLink = () => {
+    const inviteUrl = new URL("/", window.location.origin);
+    inviteUrl.searchParams.set("room", game.code);
+    navigator.clipboard.writeText(inviteUrl.toString());
+    setCopied("link");
+    setTimeout(() => setCopied(null), 1500);
   };
 
   const handleCloseRoom = async () => {
@@ -112,17 +120,24 @@ export function LobbyView({ game, players }: LobbyViewProps) {
           {game.code}
         </button>
         <div className="mt-2 h-5">
-          {copied ? (
+          {copied === "code" ? (
             <span
               className="text-green-400 text-xs font-medium"
               style={{ animation: "fade-slide-in 0.2s ease-out" }}
             >
-              Copied to clipboard!
+              Room code copied!
             </span>
           ) : (
             <span className="text-neutral-600 text-xs">tap to copy</span>
           )}
         </div>
+
+        <button
+          onClick={handleCopyInviteLink}
+          className="mt-4 w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 active:scale-[0.98] cursor-pointer"
+        >
+          {copied === "link" ? "Invite link copied!" : "Copy invite link"}
+        </button>
       </div>
 
       <div className="w-full max-w-sm space-y-4">

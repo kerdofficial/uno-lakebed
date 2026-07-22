@@ -33,7 +33,7 @@ export function signInWithName(name: string): void {
   } catch {
     // Ignore storage failures; the query param still carries the identity.
   }
-  const url = new URL("/", window.location.origin);
+  const url = new URL(window.location.href);
   url.searchParams.set(GUEST_PARAM, clean);
   window.location.href = url.toString();
 }
