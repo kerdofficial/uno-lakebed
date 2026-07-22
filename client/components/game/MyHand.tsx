@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import type { RefObject } from "preact";
 import type { Card, PlayerView } from "../../../shared/gameTypes";
 import { getRemainingHandCountAfterPlay } from "../../../shared/gameLogic/effects";
 import { UnoCard } from "../cards/UnoCard";
@@ -16,11 +17,16 @@ type MyHandProps = {
   myOrderNumber?: number | null;
 };
 
-const ANGLE_STEP = 3;
+// Max tilt is capped at 6deg so rotated card corners always stay inside the
+// horizontal edge padding and never extend the native scroll area.
+const ANGLE_STEP = 1.5;
+const MAX_ANGLE = 6;
 const MAX_DROP = 20;
 const LIFT_PAD = 36;
 const DROP_PAD = 26;
 const SELECT_GAP = 14;
+const TRACK_WIDTH = 48;
+const THUMB_WIDTH = 16;
 
 function canToggleCard(view: PlayerView, selectedCards: Set<string>, card: Card) {
   if (selectedCards.has(card.id)) return true;
@@ -47,6 +53,53 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function HandScrollbar({ scrollerRef }: { scrollerRef: RefObject<HTMLDivElement> }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!scroller || !track || !thumb) return;
+
+    const update = () => {
+      const inner = scroller.firstElementChild as HTMLElement | null;
+      const maxScroll = inner ? inner.offsetWidth - scroller.clientWidth : 0;
+      const scrollable = maxScroll > 1;
+      track.style.visibility = scrollable ? "visible" : "hidden";
+      if (scrollable) {
+        const ratio = clamp(scroller.scrollLeft / maxScroll, 0, 1);
+        thumb.style.left = `${ratio * (TRACK_WIDTH - THUMB_WIDTH)}px`;
+      }
+    };
+
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [scrollerRef]);
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative h-1 rounded-full bg-white/15"
+      style={{ width: `${TRACK_WIDTH}px`, visibility: "hidden" }}
+    >
+      <div
+        ref={thumbRef}
+        className="absolute top-0 h-1 rounded-full bg-white/70"
+        style={{ width: `${THUMB_WIDTH}px`, left: 0 }}
+      />
+    </div>
+  );
+}
+
 export function MyHand({
   view,
   selectedCards,
@@ -62,11 +115,30 @@ export function MyHand({
   const length = view.myHand.length;
   const overlapPx = Math.max(8, 30 - length * 2);
 
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
   const hasDealt = useRef(false);
   const prevCardIds = useRef<Set<string>>(new Set());
   const [newCardIds, setNewCardIds] = useState<Set<string>>(new Set());
 
   const isFirstDeal = !hasDealt.current && length > 0;
+
+  const centerHand = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+  }, []);
+
+  const centeredOnDeal = useRef(false);
+  useLayoutEffect(() => {
+    if (length === 0) {
+      centeredOnDeal.current = false;
+      return;
+    }
+    if (centeredOnDeal.current) return;
+    centeredOnDeal.current = true;
+    centerHand();
+  }, [length, centerHand]);
 
   useEffect(() => {
     if (length > 0 && !hasDealt.current) {
@@ -75,11 +147,6 @@ export function MyHand({
   }, [length]);
 
   useEffect(() => {
-    if (!hasDealt.current) {
-      prevCardIds.current = new Set(view.myHand.map((c) => c.id));
-      return;
-    }
-
     const currentIds = new Set(view.myHand.map((c) => c.id));
     const entering = new Set<string>();
     for (const id of currentIds) {
@@ -88,136 +155,48 @@ export function MyHand({
       }
     }
 
+    const isFullReplace = entering.size === currentIds.size;
     prevCardIds.current = currentIds;
 
-    if (entering.size > 0) {
-      setNewCardIds(entering);
-      const timeout = setTimeout(() => setNewCardIds(new Set()), 300);
-      return () => clearTimeout(timeout);
+    if (entering.size === 0) return;
+
+    if (isFullReplace) {
+      centerHand();
+      return;
     }
-  }, [view.myHand]);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [dims, setDims] = useState({ containerWidth: 0, cardWidth: 64 });
-
-  const measure = useCallback(() => {
-    const containerWidth = containerRef.current?.clientWidth ?? 0;
-    const cardWidth = cardRef.current?.offsetWidth || 64;
-    setDims((prev) =>
-      prev.containerWidth === containerWidth && prev.cardWidth === cardWidth
-        ? prev
-        : { containerWidth, cardWidth },
-    );
-  }, []);
-
-  useLayoutEffect(() => {
-    measure();
-  }, [length, measure]);
-
-  useEffect(() => {
-    const handler = () => measure();
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [measure]);
-
-  const spacing = Math.max(20, dims.cardWidth - overlapPx);
-  const fanWidth = length > 0 ? dims.cardWidth + (length - 1) * spacing : 0;
-  const needsSliding =
-    dims.containerWidth > 0 && fanWidth > dims.containerWidth - 12;
-
-  const centerC = (length - 1) / 2;
-  const [center, setCenter] = useState(centerC);
-
-  useEffect(() => {
-    setCenter((length - 1) / 2);
-  }, [length]);
-
-  const activeC = needsSliding ? clamp(center, 0, length - 1) : centerC;
-  const slideX = spacing * (centerC - activeC);
-
-  const drag = useRef<{
-    startX: number;
-    startC: number;
-    lastX: number;
-    vc: number;
-    pointerId: number;
-    captured: boolean;
-  } | null>(null);
-  const didDrag = useRef(false);
-  const animFrame = useRef(0);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const onPointerDown = useCallback(
-    (e: PointerEvent) => {
-      if (!needsSliding) return;
-      cancelAnimationFrame(animFrame.current);
-      didDrag.current = false;
-      drag.current = {
-        startX: e.clientX,
-        startC: clamp(center, 0, length - 1),
-        lastX: e.clientX,
-        vc: 0,
-        pointerId: e.pointerId,
-        captured: false,
-      };
-      setIsDragging(true);
-    },
-    [needsSliding, center, length],
-  );
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      if (!drag.current) return;
-      const dxTotal = e.clientX - drag.current.startX;
-      if (Math.abs(dxTotal) > 6) {
-        didDrag.current = true;
-        if (!drag.current.captured) {
-          (e.currentTarget as HTMLElement).setPointerCapture?.(drag.current.pointerId);
-          drag.current.captured = true;
-        }
-      }
-      const dxStep = e.clientX - drag.current.lastX;
-      drag.current.lastX = e.clientX;
-      drag.current.vc = -dxStep / spacing;
-      setCenter(clamp(drag.current.startC - dxTotal / spacing, 0, length - 1));
-    },
-    [spacing, length],
-  );
-
-  const endDrag = useCallback(() => {
-    if (!drag.current) return;
-    let vc = drag.current.vc;
-    drag.current = null;
-    setIsDragging(false);
-
-    const step = () => {
-      vc *= 0.92;
-      if (Math.abs(vc) < 0.003) return;
-      setCenter((prev) => clamp(prev + vc, 0, length - 1));
-      animFrame.current = requestAnimationFrame(step);
-    };
-    if (Math.abs(vc) > 0.01) {
-      animFrame.current = requestAnimationFrame(step);
+    setNewCardIds(entering);
+    const firstNewCard = view.myHand.find((c) => entering.has(c.id));
+    if (firstNewCard) {
+      requestAnimationFrame(() => {
+        scrollerRef.current
+          ?.querySelector(`[data-card-id="${CSS.escape(firstNewCard.id)}"]`)
+          ?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      });
     }
-  }, [length]);
+    const timeout = setTimeout(() => setNewCardIds(new Set()), 300);
+    return () => clearTimeout(timeout);
+  }, [view.myHand, centerHand]);
 
-  useEffect(() => {
-    return () => cancelAnimationFrame(animFrame.current);
+  const onWheel = useCallback((e: WheelEvent) => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const inner = scroller.firstElementChild as HTMLElement | null;
+    if (!inner || inner.offsetWidth <= scroller.clientWidth) return;
+    if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    scroller.scrollLeft += e.deltaMode === 1 ? e.deltaY * 24 : e.deltaY;
   }, []);
 
   const showUnoToggle =
     selectedCards.size > 0 &&
     getRemainingHandCountAfterPlay(view.myHand, Array.from(selectedCards), view.gameMode) === 1;
 
-  const transformTransition = isDragging
-    ? "none"
-    : "transform 0.3s ease-out";
-  const marginTransition = isDragging ? "none" : "margin-left 0.3s ease-out";
-
   const eligibleExtraIds = view.myHand
     .filter((card) => !selectedCards.has(card.id) && canToggleCard(view, selectedCards, card))
     .map((card) => card.id);
+
+  const mid = (length - 1) / 2;
 
   return (
     <div className="relative flex flex-col items-center gap-2 pb-4">
@@ -258,27 +237,17 @@ export function MyHand({
         </div>
       )}
       <div
-        ref={containerRef}
-        className="w-full overflow-hidden"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        ref={scrollerRef}
+        className="uno-hand-scroller w-full overflow-x-auto overflow-y-hidden"
+        onWheel={onWheel}
         style={{
           paddingTop: `${LIFT_PAD}px`,
           paddingBottom: `${DROP_PAD}px`,
-          touchAction: needsSliding ? "pan-y" : "auto",
-          cursor: needsSliding ? (isDragging ? "grabbing" : "grab") : "default",
+          touchAction: "pan-x",
+          overscrollBehaviorX: "contain",
         }}
       >
-        <div
-          className="flex justify-center items-end w-fit mx-auto"
-          style={{
-            transform: `translateX(${slideX}px)`,
-            transition: isDragging ? "none" : "transform 0.25s ease-out",
-            willChange: "transform",
-          }}
-        >
+        <div className="flex w-max min-w-full items-end justify-center px-4">
           {view.myHand.map((card, index) => {
             const isPlayable = canToggleCard(view, selectedCards, card);
             const isSelected = selectedCards.has(card.id);
@@ -288,8 +257,8 @@ export function MyHand({
                 ? 0
                 : -overlapPx + (isSelected ? SELECT_GAP : 0) + (leftNeighborSelected ? SELECT_GAP : 0);
 
-            const rel = index - activeC;
-            const angle = clamp(rel, -6, 6) * ANGLE_STEP;
+            const rel = index - mid;
+            const angle = clamp(rel * ANGLE_STEP, -MAX_ANGLE, MAX_ANGLE);
             const offsetY = Math.min(MAX_DROP, rel * rel * 1.2);
 
             let animationStyle: string | undefined;
@@ -302,20 +271,20 @@ export function MyHand({
             return (
               <div
                 key={card.id}
-                ref={index === 0 ? cardRef : undefined}
+                data-card-id={card.id}
                 className="flex-shrink-0"
                 style={{
                   marginLeft: `${marginLeft}px`,
                   zIndex: isSelected || colorPickerVisible ? 50 : index,
                   animation: animationStyle,
-                  transition: marginTransition,
+                  transition: "margin-left 0.3s ease-out",
                 }}
               >
                 <div
                   style={{
                     transform: `rotate(${angle}deg) translateY(${offsetY}px)`,
                     transformOrigin: "bottom center",
-                    transition: transformTransition,
+                    transition: "transform 0.3s ease-out",
                   }}
                 >
                   <UnoCard
@@ -324,7 +293,6 @@ export function MyHand({
                     colorPickerVisible={colorPickerVisible}
                     selected={isSelected}
                     onClick={() => {
-                      if (didDrag.current) return;
                       if (isPlayable) onToggleCard(card.id);
                     }}
                   />
@@ -334,17 +302,7 @@ export function MyHand({
           })}
         </div>
       </div>
-      {needsSliding && length > 1 && (
-        <div className="relative h-1 w-12 rounded-full bg-white/15">
-          <div
-            className="absolute top-0 h-1 w-4 rounded-full bg-white/70"
-            style={{
-              left: `${clamp(activeC / (length - 1), 0, 1) * (48 - 16)}px`,
-              transition: isDragging ? "none" : "left 0.2s ease-out",
-            }}
-          />
-        </div>
-      )}
+      <HandScrollbar scrollerRef={scrollerRef} />
       {length > 0 && (
         <div className="pointer-events-none absolute bottom-1 right-2 z-40 flex h-8 w-8 select-none items-center justify-center rounded-full bg-neutral-800/80 text-sm font-bold text-white">
           {length}

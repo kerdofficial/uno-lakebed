@@ -5,6 +5,13 @@ export function AnimationStyles() {
         background-color: #0a0a0a;
         color-scheme: dark;
       }
+      .uno-hand-scroller {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .uno-hand-scroller::-webkit-scrollbar {
+        display: none;
+      }
       @keyframes card-deal {
         0% { transform: scale(0.3) rotate(-10deg) translateY(-120px); opacity: 0; }
         60% { transform: scale(1.04) rotate(2deg) translateY(4px); opacity: 1; }
