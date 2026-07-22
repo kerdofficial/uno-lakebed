@@ -207,10 +207,11 @@ export function initializeGame(
   settingsInput?: Partial<GameSettings>
 ): GameState {
   const settings = parseGameSettings(settingsInput || {});
+  const turnOrder = shuffleDeck(playerIds);
   let deck = shuffleDeck(createDeckForMode(settings.gameMode));
   const hands: Record<string, Card[]> = {};
 
-  for (const playerId of playerIds) {
+  for (const playerId of turnOrder) {
     hands[playerId] = deck.slice(0, 7);
     deck = deck.slice(7);
   }
@@ -237,7 +238,7 @@ export function initializeGame(
     currentPlayerIndex: 0,
     direction: 1,
     currentColor: firstCard.color as CardColor,
-    turnOrder: playerIds,
+    turnOrder,
     phase: "play",
     pendingDrawStack: 0,
     pendingDrawTarget: null,

@@ -1,6 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { initializeGame } from "../shared/gameLogic.ts";
 import { makeCard, makeState, step } from "./gameLogicTestUtils.ts";
+
+test("new games shuffle the turn order for both game modes", () => {
+  const playerIds = ["host", "player-1", "player-2", "player-3"];
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+
+  try {
+    for (const gameMode of ["regular", "noMercy"] as const) {
+      const state = initializeGame(playerIds, { gameMode });
+
+      assert.deepEqual(state.turnOrder, ["player-1", "player-2", "player-3", "host"]);
+      assert.equal(state.currentPlayerIndex, 0);
+    }
+  } finally {
+    Math.random = originalRandom;
+  }
+});
 
 test("2-player wild finish can be revived by a +4 on the next turn", () => {
   const arc = "arc";
