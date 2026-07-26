@@ -123,6 +123,8 @@ export type PlayerView = {
   pendingDrawDecisionCard: Card | null;
   pendingSevenSwapTargets: PlayerInfo[];
   spectatorHands: Record<string, Card[]>;
+  outPlayers: string[];
+  isSpectating: boolean;
   publicEvent: PublicGameEvent | null;
   winner: string | null;
   finishedPlayers: string[];

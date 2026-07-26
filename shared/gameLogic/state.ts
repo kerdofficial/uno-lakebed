@@ -132,21 +132,18 @@ function expireRevivableFinishedPlayers(
 
 export function advanceTurn(
   state: GameState,
-  skipCount = 0,
-  expireRevivableFinishedPlayersOnAdvance = true
+  skipCount = 0
 ): GameState {
   state = normalizeGameState(state);
   const currentPlayerIndex = getNextPlayerIndexAfterSkips(state, skipCount);
   return {
     ...state,
     currentPlayerIndex,
-    revivableFinishedPlayers: expireRevivableFinishedPlayersOnAdvance
-      ? expireRevivableFinishedPlayers(
-          state,
-          state.currentPlayerIndex,
-          currentPlayerIndex
-        )
-      : getRevivableFinishedPlayers(state),
+    revivableFinishedPlayers: expireRevivableFinishedPlayers(
+      state,
+      state.currentPlayerIndex,
+      currentPlayerIndex
+    ),
   };
 }
 

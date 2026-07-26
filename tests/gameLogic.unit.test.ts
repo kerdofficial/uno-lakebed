@@ -20,7 +20,7 @@ test("new games shuffle the turn order for both game modes", () => {
   }
 });
 
-test("2-player wild finish can be revived by a +4 on the next turn", () => {
+test("2-player wild finish is revived by a +4 before the new finisher expires", () => {
   const arc = "arc";
   const iphone = "iphone";
 
@@ -59,11 +59,102 @@ test("2-player wild finish can be revived by a +4 on the next turn", () => {
 
   state = step(state, arc, { type: "drawCards" });
 
-  assert.equal(state.phase, "play");
+  assert.equal(state.phase, "finished");
   assert.equal(state.winner, iphone);
-  assert.deepEqual(state.placements, [iphone]);
-  assert.deepEqual(state.finishedPlayers, [iphone]);
+  assert.deepEqual(state.placements, [iphone, arc]);
+  assert.deepEqual(state.finishedPlayers, [iphone, arc]);
+  assert.deepEqual(state.revivableFinishedPlayers, []);
   assert.equal(state.hands[arc].length, 4);
+});
+
+test("resolving a draw stack expires other finishers crossed by the turn advance", () => {
+  const a = "a";
+  const b = "b";
+  const c = "c";
+  const d = "d";
+
+  let state = makeState({
+    turnOrder: [a, b, c, d],
+    currentPlayerIndex: 3,
+    phase: "stacking",
+    pendingDrawStack: 2,
+    pendingDrawTarget: d,
+    finishedPlayers: [a],
+    revivableFinishedPlayers: [a],
+    placements: [a],
+    winner: a,
+    hands: {
+      [a]: [],
+      [b]: [makeCard("b-red-1", "number", "red", 1)],
+      [c]: [makeCard("c-red-2", "number", "red", 2)],
+      [d]: [makeCard("d-red-3", "number", "red", 3)],
+    },
+  });
+
+  state = step(state, d, { type: "drawCards" });
+
+  assert.equal(state.phase, "play");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], b);
+  assert.deepEqual(state.revivableFinishedPlayers, []);
+  assert.deepEqual(state.finishedPlayers, [a]);
+});
+
+test("revival expiry follows direction changes and the traversed seats", () => {
+  const a = "a";
+  const b = "b";
+  const c = "c";
+  const d = "d";
+
+  let state = makeState({
+    turnOrder: [a, b, c, d],
+    currentPlayerIndex: 2,
+    finishedPlayers: [a],
+    revivableFinishedPlayers: [a],
+    placements: [a],
+    winner: a,
+    hands: {
+      [a]: [],
+      [b]: [makeCard("b-red-2", "number", "red", 2), makeCard("b-yellow-9", "number", "yellow", 9)],
+      [c]: [makeCard("c-reverse", "reverse", "red"), makeCard("c-blue-4", "number", "blue", 4)],
+      [d]: [makeCard("d-red-3", "number", "red", 3)],
+    },
+  });
+
+  state = step(state, c, { type: "playCards", cardIds: ["c-reverse"] });
+
+  assert.equal(state.direction, -1);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], b);
+  assert.deepEqual(state.revivableFinishedPlayers, [a]);
+
+  state = step(state, b, { type: "playCards", cardIds: ["b-red-2"] });
+
+  assert.equal(state.turnOrder[state.currentPlayerIndex], d);
+  assert.deepEqual(state.revivableFinishedPlayers, []);
+});
+
+test("skip expires a finisher when it carries the turn across their seat", () => {
+  const a = "a";
+  const b = "b";
+  const c = "c";
+
+  let state = makeState({
+    turnOrder: [a, b, c],
+    currentPlayerIndex: 1,
+    finishedPlayers: [a],
+    revivableFinishedPlayers: [a],
+    placements: [a],
+    winner: a,
+    hands: {
+      [a]: [],
+      [b]: [makeCard("b-skip", "skip", "red"), makeCard("b-blue-4", "number", "blue", 4)],
+      [c]: [makeCard("c-red-3", "number", "red", 3)],
+    },
+  });
+
+  state = step(state, b, { type: "playCards", cardIds: ["b-skip"] });
+
+  assert.equal(state.turnOrder[state.currentPlayerIndex], b);
+  assert.deepEqual(state.revivableFinishedPlayers, []);
 });
 
 test("3-player full cycle expires the revival window for the first finisher", () => {

@@ -85,12 +85,19 @@ export function computePlayerView(
           })
       : [];
   const revivableFinishedPlayers = new Set(state.revivableFinishedPlayers);
-  const canInspectHands =
-    (state.finishedPlayers.includes(userId) || state.eliminatedPlayers.includes(userId)) &&
-    !revivableFinishedPlayers.has(userId);
+  const eliminatedPlayers = new Set(state.eliminatedPlayers);
+  const outPlayers = state.finishedPlayers.filter(
+    (playerId) =>
+      !revivableFinishedPlayers.has(playerId) &&
+      !eliminatedPlayers.has(playerId) &&
+      (state.hands[playerId] || []).length === 0
+  );
+  const isSpectating =
+    state.phase !== "finished" &&
+    (outPlayers.includes(userId) || eliminatedPlayers.has(userId));
   const spectatorHands: Record<string, Card[]> = {};
 
-  if (canInspectHands) {
+  if (isSpectating) {
     for (const playerId of state.turnOrder) {
       if (playerId === userId) continue;
       if (state.phase !== "finished" && state.finishedPlayers.includes(playerId)) continue;
@@ -124,6 +131,8 @@ export function computePlayerView(
     pendingDrawDecisionCard,
     pendingSevenSwapTargets,
     spectatorHands,
+    outPlayers,
+    isSpectating,
     publicEvent: state.publicEvent,
     winner: state.winner,
     finishedPlayers: state.finishedPlayers,

@@ -11,21 +11,20 @@ export function useEventSplash(
   const [current, setCurrent] = useState<EventSplashData | null>(null);
   const [queue, setQueue] = useState<EventSplashData[]>([]);
   const prevRef = useRef<{
-    finished: string[];
-    eliminated: string[];
     publicEventId: string | null;
   } | null>(null);
-  const announcedFinishedRef = useRef<Set<string>>(new Set());
+  const announcedOutRef = useRef<Set<string>>(new Set());
   const announcedEliminatedRef = useRef<Set<string>>(new Set());
 
+  const outPlayers = view?.outPlayers ?? [];
   const signature = view
-    ? `${view.phase}|${view.finishedPlayers.join(",")}|${view.eliminatedPlayers.join(",")}|${view.publicEvent?.id ?? ""}`
+    ? `${view.phase}|${outPlayers.join(",")}|${view.eliminatedPlayers.join(",")}|${view.publicEvent?.id ?? ""}`
     : "null";
 
   useEffect(() => {
     if (!view) {
       prevRef.current = null;
-      announcedFinishedRef.current = new Set();
+      announcedOutRef.current = new Set();
       announcedEliminatedRef.current = new Set();
       setQueue([]);
       setCurrent(null);
@@ -34,56 +33,39 @@ export function useEventSplash(
 
     const name = (userId: string) =>
       view.turnOrder.find((p) => p.userId === userId)?.displayName || "Unknown";
-    const cardCountOf = (userId: string) =>
-      view.turnOrder.find((p) => p.userId === userId)?.cardCount;
 
     if (prevRef.current === null) {
       prevRef.current = {
-        finished: [...view.finishedPlayers],
-        eliminated: [...view.eliminatedPlayers],
         publicEventId: view.publicEvent?.id ?? null,
       };
-      announcedFinishedRef.current = new Set(view.finishedPlayers);
+      announcedOutRef.current = new Set(outPlayers);
       announcedEliminatedRef.current = new Set(view.eliminatedPlayers);
       return;
     }
 
     const prev = prevRef.current;
 
-    if (view.phase === "finished") {
-      const closing: EventSplashData[] = [];
-      const newGoer = view.finishedPlayers.find(
-        (userId) =>
-          !announcedFinishedRef.current.has(userId) &&
-          !view.eliminatedPlayers.includes(userId) &&
-          cardCountOf(userId) === 0,
-      );
-      if (newGoer) {
-        closing.push({ id: `out-${newGoer}-${Date.now()}`, kind: "wentOut", playerName: name(newGoer) });
-      } else {
-        const newElim = view.eliminatedPlayers.find(
-          (userId) => !announcedEliminatedRef.current.has(userId),
-        );
-        if (newElim) {
-          closing.push({ id: `elim-${newElim}-${Date.now()}`, kind: "eliminated", playerName: name(newElim) });
-        }
-      }
-
-      if (closing.length > 0) setQueue((q) => [...q, ...closing]);
-
-      announcedFinishedRef.current = new Set(view.finishedPlayers);
-      announcedEliminatedRef.current = new Set(view.eliminatedPlayers);
-      prevRef.current = {
-        finished: [...view.finishedPlayers],
-        eliminated: [...view.eliminatedPlayers],
-        publicEventId: view.publicEvent?.id ?? null,
-      };
-      return;
-    }
-
     const toEnqueue: EventSplashData[] = [];
 
-    if (view.publicEvent && view.publicEvent.id !== prev.publicEventId) {
+    for (const userId of outPlayers) {
+      if (announcedOutRef.current.has(userId)) continue;
+      if (view.eliminatedPlayers.includes(userId)) continue;
+      toEnqueue.push({ id: `out-${userId}-${Date.now()}`, kind: "wentOut", playerName: name(userId) });
+      announcedOutRef.current.add(userId);
+    }
+
+    for (const userId of view.eliminatedPlayers) {
+      if (announcedEliminatedRef.current.has(userId)) continue;
+      toEnqueue.push({ id: `elim-${userId}-${Date.now()}`, kind: "eliminated", playerName: name(userId) });
+      announcedEliminatedRef.current.add(userId);
+      announcedOutRef.current.add(userId);
+    }
+
+    if (
+      view.phase !== "finished" &&
+      view.publicEvent &&
+      view.publicEvent.id !== prev.publicEventId
+    ) {
       if (view.publicEvent.type === "handsPassed") {
         toEnqueue.push({
           id: view.publicEvent.id,
@@ -100,33 +82,21 @@ export function useEventSplash(
       }
     }
 
-    for (const userId of view.finishedPlayers) {
-      if (announcedFinishedRef.current.has(userId)) continue;
-      if (view.eliminatedPlayers.includes(userId)) continue;
-      if (cardCountOf(userId) !== 0) continue;
-      if (view.phase === "stacking") continue;
-      toEnqueue.push({ id: `out-${userId}-${Date.now()}`, kind: "wentOut", playerName: name(userId) });
-      announcedFinishedRef.current.add(userId);
+    for (const userId of Array.from(announcedOutRef.current)) {
+      if (!outPlayers.includes(userId) && !view.eliminatedPlayers.includes(userId)) {
+        announcedOutRef.current.delete(userId);
+      }
     }
 
-    for (const userId of view.eliminatedPlayers) {
-      if (announcedEliminatedRef.current.has(userId)) continue;
-      toEnqueue.push({ id: `elim-${userId}-${Date.now()}`, kind: "eliminated", playerName: name(userId) });
-      announcedEliminatedRef.current.add(userId);
-      announcedFinishedRef.current.add(userId);
-    }
-
-    for (const userId of Array.from(announcedFinishedRef.current)) {
-      if (!view.finishedPlayers.includes(userId)) {
-        announcedFinishedRef.current.delete(userId);
+    for (const userId of Array.from(announcedEliminatedRef.current)) {
+      if (!view.eliminatedPlayers.includes(userId)) {
+        announcedEliminatedRef.current.delete(userId);
       }
     }
 
     if (toEnqueue.length > 0) setQueue((q) => [...q, ...toEnqueue]);
 
     prevRef.current = {
-      finished: [...view.finishedPlayers],
-      eliminated: [...view.eliminatedPlayers],
       publicEventId: view.publicEvent?.id ?? null,
     };
   }, [signature]);

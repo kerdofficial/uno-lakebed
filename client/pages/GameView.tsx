@@ -29,6 +29,17 @@ type PlayerViewRecord = {
 
 const FINISH_SCREEN_DELAY_MS = 2600;
 
+function parsePlayerView(serializedView: string): PlayerView {
+  const view = JSON.parse(serializedView) as PlayerView;
+  return {
+    ...view,
+    outPlayers: view.outPlayers ?? [],
+    isSpectating:
+      view.isSpectating ??
+      (Object.keys(view.spectatorHands ?? {}).length > 0 && view.phase !== "finished"),
+  };
+}
+
 function feasibleTopColors(cards: Card[], view: PlayerView): CardColor[] {
   if (cards.length < 2) return [];
   if (view.canStack) {
@@ -113,7 +124,7 @@ export function GameView({
 
   const viewRecord = allViews.find((entry) => entry.gameId === gameId);
   const view: PlayerView | null = viewRecord
-    ? JSON.parse(viewRecord.view)
+    ? parsePlayerView(viewRecord.view)
     : null;
 
   const animations = useGameAnimations(view);
@@ -137,13 +148,18 @@ export function GameView({
       return;
     }
 
+    if (eventSplash) {
+      setShowFinishedScreen(false);
+      return;
+    }
+
     setShowFinishedScreen(false);
     const timeout = setTimeout(() => {
       setShowFinishedScreen(true);
     }, FINISH_SCREEN_DELAY_MS);
 
     return () => clearTimeout(timeout);
-  }, [isFinished, view?.winner, view?.lastAction]);
+  }, [eventSplash?.id, isFinished, view?.winner, view?.lastAction]);
 
   useEffect(() => {
     const eventId = view?.publicEvent?.id;
@@ -521,8 +537,7 @@ export function GameView({
     );
   }
 
-  const isSpectating =
-    Object.keys(view.spectatorHands).length > 0 && view.phase !== "finished";
+  const isSpectating = view.isSpectating;
   const turnPositions = getTurnOrderPositions(view);
 
   const colorPickerTrigger =

@@ -236,13 +236,11 @@ function finishState(state: GameState, lastAction?: string): GameState {
 function advanceAndFinish(
   state: GameState,
   skipCount: number,
-  lastAction: string,
-  expireRevivableFinishedPlayersOnAdvance = true
+  lastAction: string
 ): GameState {
   const advanced = advanceTurn(
     { ...state, phase: "play" as GamePhase },
-    skipCount,
-    expireRevivableFinishedPlayersOnAdvance
+    skipCount
   );
   return finishState(advanced, lastAction);
 }
@@ -343,7 +341,7 @@ function applyColorRoulette(
   };
 
   nextState = applyMercyEliminations(nextState);
-  return advanceAndFinish(nextState, 0, nextState.lastAction || "", true);
+  return advanceAndFinish(nextState, 0, nextState.lastAction || "");
 }
 
 function getSkipCountAfterAction(state: GameState, playedCards: Card[]): { state: GameState; skipCount: number } {
@@ -367,6 +365,30 @@ function getSkipCountAfterAction(state: GameState, playedCards: Card[]): { state
   }
 
   return { state: nextState, skipCount };
+}
+
+function resolveDrawDirectionAndTarget(
+  state: GameState,
+  actorIndex: number,
+  playedCards: Card[],
+  activePlayerCountBeforeEffect: number
+): { state: GameState; targetIndex: number } {
+  const reverseDraw4Count = playedCards.filter(
+    (card) => card.type === "wildReverseDraw4"
+  ).length;
+  const reversesDirection = reverseDraw4Count % 2 === 1;
+  const nextState = reversesDirection
+    ? {
+        ...state,
+        direction: (state.direction * -1) as 1 | -1,
+      }
+    : state;
+  const targetIndex =
+    reversesDirection && activePlayerCountBeforeEffect === 2
+      ? actorIndex
+      : getNextPlayerIndex(nextState, actorIndex, 0, true);
+
+  return { state: nextState, targetIndex };
 }
 
 function applyPostPlayHandRules(state: GameState, playerId: string): GameState {
@@ -435,26 +457,22 @@ export function applyCards(
 
   if (hasDrawEffect) {
     const activePlayerCountBeforeDraw = getActivePlayerIds(nextState).length;
+    const actorIndex = nextState.turnOrder.indexOf(playerId);
     nextState = applyPostPlayHandRules(nextState, playerId);
-
-    if (lastCard.type === "wildReverseDraw4") {
-      nextState = {
-        ...nextState,
-        direction: (nextState.direction * -1) as 1 | -1,
-      };
-    }
-
-    const targetIndex =
-      lastCard.type === "wildReverseDraw4" && activePlayerCountBeforeDraw === 2
-        ? nextState.currentPlayerIndex
-        : getNextPlayerIndex(nextState, nextState.currentPlayerIndex, 0, true);
+    const drawEffect = resolveDrawDirectionAndTarget(
+      nextState,
+      actorIndex,
+      playedCards,
+      activePlayerCountBeforeDraw
+    );
+    nextState = drawEffect.state;
 
     return {
       ...nextState,
       phase: "stacking",
       pendingDrawStack: nextState.pendingDrawStack + drawAmount,
-      pendingDrawTarget: nextState.turnOrder[targetIndex],
-      currentPlayerIndex: targetIndex,
+      pendingDrawTarget: nextState.turnOrder[drawEffect.targetIndex],
+      currentPlayerIndex: drawEffect.targetIndex,
       lastAction,
     };
   }
@@ -535,6 +553,8 @@ export function applyStack(
   callUno = false
 ): GameState {
   state = normalizeGameState(state);
+  const activePlayerCountBeforeDraw = getActivePlayerIds(state).length;
+  const actorIndex = state.turnOrder.indexOf(playerId);
   const { hand, playedCards } = removePlayedCards(state.hands[playerId], cardIds);
   const lastCard = playedCards[playedCards.length - 1];
   const drawAmount = playedCards.reduce((sum, card) => sum + getDrawAmount(card), 0);
@@ -558,19 +578,17 @@ export function applyStack(
   };
 
   nextState = applyPostPlayHandRules(nextState, playerId);
-
-  if (lastCard.type === "wildReverseDraw4") {
-    nextState = {
-      ...nextState,
-      direction: (nextState.direction * -1) as 1 | -1,
-    };
-  }
-
-  const targetIndex = getNextPlayerIndex(nextState, state.currentPlayerIndex, 0, true);
+  const drawEffect = resolveDrawDirectionAndTarget(
+    nextState,
+    actorIndex,
+    playedCards,
+    activePlayerCountBeforeDraw
+  );
+  nextState = drawEffect.state;
   return {
     ...nextState,
-    pendingDrawTarget: nextState.turnOrder[targetIndex],
-    currentPlayerIndex: targetIndex,
+    pendingDrawTarget: nextState.turnOrder[drawEffect.targetIndex],
+    currentPlayerIndex: drawEffect.targetIndex,
     lastAction: `${playerId} stacked ${playedCards.map(cardLabel).join(", ")}`,
   };
 }
@@ -596,25 +614,22 @@ export function applyChosenColor(
     return applyColorRoulette(nextState, playerId, chosenColor, [topCard]);
   }
 
-  if (topCard.type === "wildReverseDraw4") {
-    nextState = {
-      ...nextState,
-      direction: (nextState.direction * -1) as 1 | -1,
-    };
-  }
-
   if (isDrawCard(topCard, nextState.gameMode)) {
-    const activePlayerCount = getActivePlayerIds(nextState).length;
-    const targetIndex =
-      topCard.type === "wildReverseDraw4" && activePlayerCount === 2
-        ? nextState.currentPlayerIndex
-        : getNextPlayerIndex(nextState, nextState.currentPlayerIndex, 0, true);
+    const activePlayerCountBeforeDraw = getActivePlayerIds(nextState).length;
+    const actorIndex = nextState.turnOrder.indexOf(playerId);
+    const drawEffect = resolveDrawDirectionAndTarget(
+      nextState,
+      actorIndex,
+      [topCard],
+      activePlayerCountBeforeDraw
+    );
+    nextState = drawEffect.state;
     return {
       ...nextState,
       phase: "stacking",
       pendingDrawStack: nextState.pendingDrawStack + getDrawAmount(topCard),
-      pendingDrawTarget: nextState.turnOrder[targetIndex],
-      currentPlayerIndex: targetIndex,
+      pendingDrawTarget: nextState.turnOrder[drawEffect.targetIndex],
+      currentPlayerIndex: drawEffect.targetIndex,
     };
   }
 
@@ -637,7 +652,7 @@ export function applyDraw(state: GameState, playerId: string): GameState {
   };
 
   result = applyMercyEliminations(result);
-  return advanceAndFinish(result, 0, result.lastAction || "", false);
+  return advanceAndFinish(result, 0, result.lastAction || "");
 }
 
 export function applyNormalDraw(state: GameState, playerId: string): GameState {

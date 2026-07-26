@@ -262,6 +262,14 @@ test("no mercy eliminated player is placed last after remaining players finish",
   assert.deepEqual(state.eliminatedPlayers, [z]);
   assert.deepEqual(state.placements, []);
 
+  const eliminatedView = computePlayerView(state, z, "game-1", [
+    { userId: x, displayName: "X", picture: "" },
+    { userId: y, displayName: "Y", picture: "" },
+    { userId: z, displayName: "Z", picture: "" },
+  ]);
+  assert.equal(eliminatedView.isSpectating, true);
+  assert.deepEqual(eliminatedView.outPlayers, []);
+
   state = step(state, x, {
     type: "playCards",
     cardIds: ["x-red-1"],
@@ -448,9 +456,12 @@ test("player view only exposes spectator hands to players who cannot be revived"
   const spectatorView = computePlayerView(state, dani, "game-1", players);
   assert.deepEqual(Object.keys(spectatorView.spectatorHands).sort(), [balazs, peti].sort());
   assert.deepEqual(spectatorView.spectatorHands[balazs].map((card) => card.id), ["balazs-1"]);
+  assert.deepEqual(spectatorView.outPlayers, [dani]);
+  assert.equal(spectatorView.isSpectating, true);
 
   const activeView = computePlayerView(state, balazs, "game-1", players);
   assert.deepEqual(activeView.spectatorHands, {});
+  assert.equal(activeView.isSpectating, false);
 
   const revivableView = computePlayerView(
     { ...state, revivableFinishedPlayers: [dani] },
@@ -459,6 +470,8 @@ test("player view only exposes spectator hands to players who cannot be revived"
     players
   );
   assert.deepEqual(revivableView.spectatorHands, {});
+  assert.deepEqual(revivableView.outPlayers, []);
+  assert.equal(revivableView.isSpectating, false);
 
   const eliminatedView = computePlayerView(
     { ...state, finishedPlayers: [dani, peti], eliminatedPlayers: [peti], hands: { ...state.hands, [peti]: [] } },
@@ -467,6 +480,46 @@ test("player view only exposes spectator hands to players who cannot be revived"
     players
   );
   assert.deepEqual(Object.keys(eliminatedView.spectatorHands), [balazs]);
+  assert.deepEqual(eliminatedView.outPlayers, [dani]);
+  assert.equal(eliminatedView.isSpectating, true);
+});
+
+test("no mercy zero does not revive or rotate with a revivable finisher", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y, z],
+    currentPlayerIndex: 0,
+    finishedPlayers: [y, z],
+    revivableFinishedPlayers: [y],
+    eliminatedPlayers: [z],
+    placements: [y],
+    winner: y,
+    hands: {
+      [x]: [makeCard("x-zero", "number", "red", 0), makeCard("x-blue-4", "number", "blue", 4)],
+      [y]: [],
+      [z]: [],
+    },
+  });
+
+  state = step(state, x, { type: "playCards", cardIds: ["x-zero"] });
+
+  assert.equal(state.phase, "finished");
+  assert.deepEqual(state.hands[x].map((card) => card.id), ["x-blue-4"]);
+  assert.deepEqual(state.hands[y], []);
+  assert.deepEqual(state.revivableFinishedPlayers, []);
+  assert.deepEqual(state.placements, [y, x, z]);
+
+  const view = computePlayerView(state, y, "game-1", [
+    { userId: x, displayName: "X", picture: "" },
+    { userId: y, displayName: "Y", picture: "" },
+    { userId: z, displayName: "Z", picture: "" },
+  ]);
+  assert.deepEqual(view.outPlayers, [y]);
+  assert.equal(view.isSpectating, false);
 });
 
 test("no mercy hand actions publish pass and swap events", () => {
@@ -740,7 +793,7 @@ test("no mercy self-targeted reverse draw four chain passes to the opponent when
   assert.equal(state.turnOrder[state.currentPlayerIndex], y);
 });
 
-test("no mercy stacked reverse draw four flips the chain back to the opponent", () => {
+test("no mercy stacked reverse draw four self-targets with two players", () => {
   const x = "x";
   const y = "y";
 
@@ -764,12 +817,103 @@ test("no mercy stacked reverse draw four flips the chain back to the opponent", 
 
   state = step(state, x, { type: "stackCards", cardIds: ["x-rev4"], chosenColor: "blue" });
   assert.equal(state.direction, -1);
-  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.pendingDrawTarget, x);
   assert.equal(state.pendingDrawStack, 8);
 
-  state = step(state, y, { type: "drawCards" });
-  assert.equal(state.hands[y].length, 9);
-  assert.equal(state.turnOrder[state.currentPlayerIndex], x);
+  state = step(state, x, { type: "drawCards" });
+  assert.equal(state.hands[x].length, 9);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], y);
+});
+
+test("no mercy mixed stack keeps a reverse draw four effect when a colored draw four is last", () => {
+  const x = "x";
+  const y = "y";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [
+        makeCard("x-rev4", "wildReverseDraw4", null),
+        makeCard("x-yellow-4", "draw4", "yellow"),
+        makeCard("x-green-2", "number", "green", 2),
+      ],
+      [y]: [makeCard("y-plus4", "draw4", "red"), makeCard("y-green-9", "number", "green", 9)],
+    },
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-plus4"] });
+  state = step(state, x, {
+    type: "stackCards",
+    cardIds: ["x-rev4", "x-yellow-4"],
+    chosenColor: "yellow",
+  });
+
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, x);
+  assert.equal(state.pendingDrawStack, 12);
+  assert.equal(state.discardPile[state.discardPile.length - 1].id, "x-yellow-4");
+  assert.equal(state.currentColor, "yellow");
+});
+
+test("no mercy two reverse draw fours cancel by parity in one stack action", () => {
+  const x = "x";
+  const y = "y";
+
+  let state = makeState({
+    gameMode: "noMercy",
+    turnOrder: [x, y],
+    currentPlayerIndex: 1,
+    hands: {
+      [x]: [
+        makeCard("x-rev4-a", "wildReverseDraw4", null),
+        makeCard("x-rev4-b", "wildReverseDraw4", null),
+        makeCard("x-green-2", "number", "green", 2),
+      ],
+      [y]: [makeCard("y-plus4", "draw4", "red"), makeCard("y-green-9", "number", "green", 9)],
+    },
+  });
+
+  state = step(state, y, { type: "playCards", cardIds: ["y-plus4"] });
+  state = step(state, x, {
+    type: "stackCards",
+    cardIds: ["x-rev4-a", "x-rev4-b"],
+    chosenColor: "blue",
+  });
+
+  assert.equal(state.direction, 1);
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.pendingDrawStack, 12);
+});
+
+test("no mercy stacked reverse draw four targets the new direction with three players", () => {
+  const x = "x";
+  const y = "y";
+  const z = "z";
+
+  const state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [x, y, z],
+      currentPlayerIndex: 1,
+      phase: "stacking",
+      pendingDrawStack: 4,
+      pendingDrawTarget: y,
+      topCard: makeCard("x-plus4", "draw4", "red"),
+      hands: {
+        [x]: [makeCard("x-red-1", "number", "red", 1)],
+        [y]: [makeCard("y-rev4", "wildReverseDraw4", null), makeCard("y-blue-2", "number", "blue", 2)],
+        [z]: [makeCard("z-red-3", "number", "red", 3)],
+      },
+    }),
+    y,
+    { type: "stackCards", cardIds: ["y-rev4"], chosenColor: "blue" }
+  );
+
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, x);
+  assert.equal(state.pendingDrawStack, 8);
 });
 
 test("no mercy wild reverse draw four played from a draw decision self-targets with two players", () => {
@@ -803,6 +947,33 @@ test("no mercy wild reverse draw four played from a draw decision self-targets w
   assert.equal(state.pendingDrawTarget, y);
   assert.equal(state.pendingDrawStack, 4);
   assert.equal(state.unoCallStatus[y], true);
+});
+
+test("no mercy reverse draw four uses the same targeting after deferred color choice", () => {
+  const x = "x";
+  const y = "y";
+
+  const state = step(
+    makeState({
+      gameMode: "noMercy",
+      turnOrder: [x, y],
+      currentPlayerIndex: 1,
+      phase: "chooseColor",
+      topCard: makeCard("y-rev4", "wildReverseDraw4", null),
+      hands: {
+        [x]: [makeCard("x-red-1", "number", "red", 1)],
+        [y]: [makeCard("y-blue-2", "number", "blue", 2)],
+      },
+    }),
+    y,
+    { type: "chooseColor", chosenColor: "blue" }
+  );
+
+  assert.equal(state.phase, "stacking");
+  assert.equal(state.direction, -1);
+  assert.equal(state.pendingDrawTarget, y);
+  assert.equal(state.pendingDrawStack, 4);
+  assert.equal(state.currentColor, "blue");
 });
 
 test("no mercy allows multi-playing skip all cards and returns to the same player", () => {
